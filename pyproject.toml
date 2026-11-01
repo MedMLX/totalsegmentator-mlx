@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "totalsegmentator-mlx"
+version = "0.1.6"
+description = "Segment 117 CT structures with TotalSegmentator v2 in native MLX"
+readme = "README.md"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Image Processing",
+  "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+keywords = [
+  "mlx",
+  "apple-silicon",
+  "metal",
+  "medical-imaging",
+  "totalsegmentator",
+  "ct",
+  "segmentation",
+]
+requires-python = ">=3.13,<3.14"
+license = "Apache-2.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [
+  { name = "Joseph Sandoval" },
+  { name = "Alfredo Sandoval Jr." },
+]
+dependencies = [
+  "medmlx-core==0.2.6",
+  "mlx==0.32.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
+  "nnunet-mlx==0.6.4",
+  "nibabel>=5.3,<6",
+  "numpy>=2.0,<3",
+  "scipy==1.18.1",
+]
+
+[project.urls]
+Homepage = "https://medmlx.org"
+Documentation = "https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.6/README.md"
+Repository = "https://github.com/MedMLX/totalsegmentator-mlx"
+Issues = "https://github.com/MedMLX/totalsegmentator-mlx/issues"
+Weights = "https://huggingface.co/MedMLX/totalsegmentator-mlx"
+MedMLX = "https://github.com/MedMLX/medmlx"
+
+[project.optional-dependencies]
+dev = ["pyright==1.1.414", "pytest>=8.4,<10", "ruff>=0.13,<1"]
+
+[project.scripts]
+totalsegmentator-mlx = "totalsegmentator_mlx.cli:main"
+
+[project.entry-points."medmlx.models"]
+totalsegmentator = "totalsegmentator_mlx.medmlx:MODEL"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/totalsegmentator_mlx"]
+
+[tool.uv]
+constraint-dependencies = ["setuptools>=84.1.0", "filelock>=4.2.1", ]
+environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
+required-environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "TID251", "TID252", "ANN401"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Any" = { msg = "Use a precise type at the boundary." }
+"typing_extensions.Any" = { msg = "Use a precise type at the boundary." }
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "src/totalsegmentator_mlx",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+]

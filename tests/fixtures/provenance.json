@@ -1,0 +1,70 @@
+{
+  "purpose": "Synthetic outer CT workflow regression; no released weights or patient data",
+  "reference_revision": "44310d406805032e7056c8c13a2a37456faeaaf7",
+  "reference_function": "totalsegmentator.nnunet:nnUNet_predict_image",
+  "reference_options": {
+    "task_id": [
+      291,
+      292,
+      293,
+      294,
+      295
+    ],
+    "resample": 1.5,
+    "folds": [
+      0
+    ],
+    "trainer": "nnUNetTrainerNoMirroring",
+    "device": "cpu"
+  },
+  "controlled_network": "(staged_ct.astype(int64) + task_id) % (max_local_label + 1)",
+  "scope": "CT reorientation, cubic resampling, global label merging, split/rejoin, nearest restoration and output metadata; network inference is replaced at the folder boundary",
+  "files": {
+    "anisotropic_ct.nii.gz": {
+      "bytes": 8835
+    },
+    "anisotropic_reference.nii.gz": {
+      "bytes": 10003
+    },
+    "permuted_ct.nii.gz": {
+      "bytes": 8842
+    },
+    "permuted_reference.nii.gz": {
+      "bytes": 10011
+    }
+  },
+  "tier_and_crop_references": {
+    "reference": "TotalSegmentator 2.12.0 totalsegmentator(task='total', ml=True, device='cpu')",
+    "controlled_network": "(staged_ct.astype(int64) + task_id) % (max_local_label + 1) at nnUNetv2_predict",
+    "files": {
+      "anisotropic_coarse_reference.nii.gz": {
+        "source": "anisotropic_ct.nii.gz",
+        "options": {
+          "fastest": true
+        }
+      },
+      "permuted_fast_reference.nii.gz": {
+        "source": "permuted_ct.nii.gz",
+        "options": {
+          "fast": true
+        }
+      },
+      "anisotropic_roi_reference.nii.gz": {
+        "source": "anisotropic_ct.nii.gz",
+        "options": {
+          "roi_subset": [
+            "kidney_right",
+            "liver",
+            "vertebrae_T12"
+          ]
+        }
+      },
+      "permuted_body_reference.nii.gz": {
+        "source": "permuted_ct.nii.gz",
+        "options": {
+          "body_seg": true
+        }
+      }
+    }
+  }
+}
