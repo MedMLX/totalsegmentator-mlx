@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import cast
 
 import nibabel as nib
@@ -96,21 +97,20 @@ def validate_destination(path: Path, *, overwrite: bool) -> None:
     if not str(path).endswith((".nii", ".nii.gz")):
         raise InvalidInputError("Output must be a .nii or .nii.gz multilabel image")
     require_folder(path)
-    if path.exists() and (not overwrite or not path.is_file()):
+    if (path.exists() or path.is_symlink()) and (not overwrite or not path.is_file()):
         raise InvalidInputError(f"Output already exists: {path}")
 
 
 def write_segmentation(image: nib.Nifti1Image, path: Path, *, overwrite: bool) -> None:
     """Write the mask, creating parent directories; the format follows the file extension.
 
-    The mask is written to ``.<pid>.<name>`` beside ``path`` and renamed into place, so a
-    failed write never replaces an earlier mask.
+    The mask is staged in a private directory beside ``path`` and renamed into place,
+    so a failed write never replaces an earlier mask.
     """
     validate_destination(path, overwrite=overwrite)
     path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f".{os.getpid()}.{path.name}")
-    try:
+    # NiBabel follows links when opening the staging path.
+    with TemporaryDirectory(prefix=".totalsegmentator-", dir=path.parent) as staging_dir:
+        partial = Path(staging_dir) / path.name
         save_nifti(image, partial)
         os.replace(partial, path)
-    finally:
-        partial.unlink(missing_ok=True)
