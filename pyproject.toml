@@ -61,9 +61,6 @@ totalsegmentator-mlx = "totalsegmentator_mlx.cli:main"
 [project.entry-points."medmlx.models"]
 totalsegmentator = "totalsegmentator_mlx.medmlx:MODEL"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/totalsegmentator_mlx"]
 
