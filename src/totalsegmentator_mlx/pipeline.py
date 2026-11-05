@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -100,8 +101,16 @@ def _infer_parts(
             image = load_nifti(output / f"s{index:02d}.nii.gz")
             merge_part(labels, np.asanyarray(image.dataobj), task_id)
         probabilities.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(output / "s01.npz", probabilities)
-        shutil.copyfile(output / "s01.pkl", probabilities.with_suffix(".pkl"))
+        # Stage beside the destination and rename, so an existing link is replaced rather
+        # than written through, as ``write_segmentation`` does for the mask.
+        with TemporaryDirectory(prefix=".totalsegmentator-", dir=probabilities.parent) as publish:
+            for name, target in (
+                ("s01.npz", probabilities),
+                ("s01.pkl", probabilities.with_suffix(".pkl")),
+            ):
+                staged = Path(publish) / target.name
+                shutil.copyfile(output / name, staged)
+                os.replace(staged, target)
     return combined
 
 
@@ -137,19 +146,14 @@ def _segment_grid(
     return restore_labels(labels, canonical, source)
 
 
-def _protect_input(destination: Path, source: Path | None) -> None:
-    """Reject output paths sharing the input's name, symlink target or inode."""
-    if source is not None and (
-        destination.resolve() == source.resolve()
-        or (destination.is_file() and source.is_file() and destination.samefile(source))
-    ):
+def _protect_input(destination: Path, sources: set[Path]) -> None:
+    """Reject an output path sharing an input's name, symlink target or inode."""
+    if any(_same_path(destination, source) for source in sources):
         raise InvalidInputError("Output must not overwrite the input CT")
 
 
-def _input_paths(image: str | Path | nib.Nifti1Image) -> set[Path]:
+def _input_paths(image: nib.Nifti1Image) -> set[Path]:
     """Find named image files and named proxy backing files when available."""
-    if not isinstance(image, nib.Nifti1Image):
-        return {Path(image)}
     paths: set[Path] = set()
     filename = image.get_filename()
     if filename is not None:
@@ -294,8 +298,7 @@ def check_request(
     destination = None if output_path is None else Path(output_path)
     if destination is not None:
         validate_destination(destination, overwrite=overwrite)
-        for source_path in source_paths:
-            _protect_input(destination, source_path)
+        _protect_input(destination, source_paths)
     probabilities = None if probabilities_path is None else Path(probabilities_path)
     if probabilities is not None:
         if len(task_ids) != 1 or crop_task is not None or probabilities.suffix != ".npz":
@@ -304,10 +307,10 @@ def check_request(
             )
         require_folder(probabilities)
         for path in (probabilities, probabilities.with_suffix(".pkl")):
-            if path.exists() and not overwrite:
+            # A dangling link is an existing output, as for the mask.
+            if (path.exists() or path.is_symlink()) and not overwrite:
                 raise InvalidInputError(f"Output already exists: {path}")
-            for source_path in source_paths:
-                _protect_input(path, source_path)
+            _protect_input(path, source_paths)
     return Request(
         image=image,
         task_ids=task_ids,
