@@ -370,7 +370,7 @@ wheels = [
 
 [[package]]
 name = "nnunet-mlx"
-version = "0.7.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blosc2" },
@@ -387,9 +387,9 @@ dependencies = [
     { name = "tifffile" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/f9/4def1b7bd1d57dfe215cbef4d910276fbe559012076f52b5678c72d6bb07/nnunet_mlx-0.7.0.tar.gz", hash = "sha256:3976e0280057028d4e460b68403ae82029e9230633d439b483fd99a95125c8f9", size = 141683, upload-time = "2026-11-06T07:43:01.228Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/13/71060c95544b1a5d44714f9428bdba2e6fae5df907340b59f89825eaed24/nnunet_mlx-0.7.1.tar.gz", hash = "sha256:6f9d3b7d612c7d2bc3b443da3be613a2ead28d19fbaf4507b4a93e2aa67c9dab", size = 154184, upload-time = "2026-11-06T09:18:30.66Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/a6/ad4fcad3e47db56939d3ddfa49cc86dee18504fcb2221a97c0b21dc60af2/nnunet_mlx-0.7.0-py3-none-any.whl", hash = "sha256:40df3e4eb362bd012bfa78751a7d45dc6fdf3eabfcedce4f1bccc8e2c0f74df6", size = 175327, upload-time = "2026-11-06T07:42:59.795Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/b0/95ef7c4b2c310ed945c994f008494aaab5a70bb7cfb1932f46697cbb02c5/nnunet_mlx-0.7.1-py3-none-any.whl", hash = "sha256:2336830cffeebd7a871214612ec5b205b076779d90e9e5eb3a2fd7297f1baaaf", size = 190372, upload-time = "2026-11-06T09:18:29.249Z" },
 ]
 
 [[package]]
@@ -629,7 +629,7 @@ wheels = [
 
 [[package]]
 name = "totalsegmentator-mlx"
-version = "0.1.7"
+version = "0.1.8"
 source = { editable = "." }
 dependencies = [
     { name = "medmlx-core" },
@@ -649,10 +649,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "medmlx-core", specifier = "==0.2.6" },
+    { name = "medmlx-core", specifier = ">=0.2.6,<0.3" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "==0.32.4" },
     { name = "nibabel", specifier = ">=5.3,<6" },
-    { name = "nnunet-mlx", specifier = "==0.7.0" },
+    { name = "nnunet-mlx", specifier = ">=0.7.0,<0.8" },
     { name = "numpy", specifier = ">=2.0,<3" },
     { name = "pyright", marker = "extra == 'dev'", specifier = "==1.1.414" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4,<10" },

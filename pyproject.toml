@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "totalsegmentator-mlx"
-version = "0.1.7"
+version = "0.1.8"
 description = "Segment 117 CT structures with TotalSegmentator v2 in native MLX"
 readme = "README.md"
 classifiers = [
@@ -36,9 +36,9 @@ authors = [
   { name = "Alfredo Sandoval Jr." },
 ]
 dependencies = [
-  "medmlx-core==0.2.6",
+  "medmlx-core>=0.2.6,<0.3",
   "mlx==0.32.4; platform_system == 'Darwin' and platform_machine == 'arm64'",
-  "nnunet-mlx==0.7.0",
+  "nnunet-mlx>=0.7.0,<0.8",
   "nibabel>=5.3,<6",
   "numpy>=2.0,<3",
   "scipy==1.18.1",
@@ -46,7 +46,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://medmlx.org"
-Documentation = "https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.7/README.md"
+Documentation = "https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.8/README.md"
 Repository = "https://github.com/MedMLX/totalsegmentator-mlx"
 Issues = "https://github.com/MedMLX/totalsegmentator-mlx/issues"
 Weights = "https://huggingface.co/MedMLX/totalsegmentator-mlx"
