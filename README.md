@@ -6,7 +6,7 @@ Segment 117 CT structures with TotalSegmentator v2 in native MLX. Includes stand
 
 [![PyPI](https://img.shields.io/pypi/v/totalsegmentator-mlx)](https://pypi.org/project/totalsegmentator-mlx/)
 [![Python](https://img.shields.io/pypi/pyversions/totalsegmentator-mlx)](https://pypi.org/project/totalsegmentator-mlx/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.6/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue)](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.7/LICENSE)
 [![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-MLX-black?logo=apple)](https://github.com/ml-explore/mlx)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97_Hugging_Face-weights-yellow)](https://huggingface.co/MedMLX/totalsegmentator-mlx)
 [![MedMLX](https://img.shields.io/badge/MedMLX-runtime-A51C30)](https://github.com/MedMLX/medmlx)
@@ -43,7 +43,7 @@ For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-wor
 ```bash
 uv venv --python 3.13
 source .venv/bin/activate
-uv pip install "totalsegmentator-mlx>=0.1.6"
+uv pip install "totalsegmentator-mlx>=0.1.7"
 ```
 
 ## Run
@@ -149,6 +149,6 @@ needs Apple Silicon with Metal and has no CPU or PyTorch fallback.
 
 ## License
 
-[Apache-2.0](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.6/LICENSE). See [third-party notices](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.6/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms.
+[Apache-2.0](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.7/LICENSE). See [third-party notices](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.7/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms.
 
 For research and education. Outputs require human review.

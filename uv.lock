@@ -370,7 +370,7 @@ wheels = [
 
 [[package]]
 name = "nnunet-mlx"
-version = "0.6.4"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blosc2" },
@@ -387,9 +387,9 @@ dependencies = [
     { name = "tifffile" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/9b/fc8ff7e5e4a343836484b3ebeb7b223dbcd62ab88094bde07c1952a894db/nnunet_mlx-0.6.4.tar.gz", hash = "sha256:70a3e8b8e8821453e5bbb3aac7fbeb4c7abb7622b548424ff5baca8562ad18de", size = 144907, upload-time = "2026-11-01T03:57:23.121Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/f9/4def1b7bd1d57dfe215cbef4d910276fbe559012076f52b5678c72d6bb07/nnunet_mlx-0.7.0.tar.gz", hash = "sha256:3976e0280057028d4e460b68403ae82029e9230633d439b483fd99a95125c8f9", size = 141683, upload-time = "2026-11-06T07:43:01.228Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7a/7a/c2bedc8a63ea6b0980d93f4a8c35b7d326eeb78b02fbdd07991d67e9c0e2/nnunet_mlx-0.6.4-py3-none-any.whl", hash = "sha256:e80e4871c1cdef4e8a3fb63455edeb5f29850486fcc4786251d4fb5a5632e884", size = 180520, upload-time = "2026-11-01T03:57:21.761Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/a6/ad4fcad3e47db56939d3ddfa49cc86dee18504fcb2221a97c0b21dc60af2/nnunet_mlx-0.7.0-py3-none-any.whl", hash = "sha256:40df3e4eb362bd012bfa78751a7d45dc6fdf3eabfcedce4f1bccc8e2c0f74df6", size = 175327, upload-time = "2026-11-06T07:42:59.795Z" },
 ]
 
 [[package]]
@@ -629,7 +629,7 @@ wheels = [
 
 [[package]]
 name = "totalsegmentator-mlx"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
     { name = "medmlx-core" },
@@ -652,7 +652,7 @@ requires-dist = [
     { name = "medmlx-core", specifier = "==0.2.6" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "==0.32.4" },
     { name = "nibabel", specifier = ">=5.3,<6" },
-    { name = "nnunet-mlx", specifier = "==0.6.4" },
+    { name = "nnunet-mlx", specifier = "==0.7.0" },
     { name = "numpy", specifier = ">=2.0,<3" },
     { name = "pyright", marker = "extra == 'dev'", specifier = "==1.1.414" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4,<10" },
