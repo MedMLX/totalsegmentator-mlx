@@ -17,6 +17,8 @@ MODEL = {
     "label": "TotalSegmentator",
     "task": "segmentation",
     "run": "totalsegmentator_mlx.medmlx:run",
+    # Measured MLX peak for standard mode on a 768x768x101 abdominal CT; larger inputs need more.
+    "peak_memory_gb": 5.0,
     "summary": "CT segmentation (standard, fast or coarse; optional ROI/body crop) on Metal.",
     "labels": {str(number): name for number, name in LABELS.items()},
 }

@@ -23,6 +23,8 @@ Standard mode (1.5 mm): 3D surfaces from [autoPET-III](https://huggingface.co/da
 | :--- | :--- |
 | 3D CT · NIfTI | Multilabel mask on the input grid |
 
+Weights: 824 MB download. Peak MLX memory: 5.0 GB for the standard mode on a 768×768×101 abdominal CT.
+
 ## Use with MedMLX
 
 The [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) is the lowest-friction way to use this model. It installs this runtime, downloads its weights on first use, and lets an AI agent describe, check and run `totalsegmentator` for you.
