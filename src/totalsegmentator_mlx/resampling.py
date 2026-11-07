@@ -117,6 +117,50 @@ def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDA
     return output
 
 
+def _nearest_indices(source: int, target: int) -> NDArray[np.intp]:
+    """Return SciPy's endpoint-aligned order-zero source index for each target voxel."""
+    scale = (source - 1) / (target - 1) if target != 1 else 1.0
+    return np.floor(np.arange(target, dtype=np.float64) * scale + 0.5).astype(np.intp)
+
+
+def oriented_nearest_labels(
+    labels: NDArray[np.uint8],
+    factors: NDArray[np.float64],
+    transform: NDArray[np.float64],
+) -> NDArray[np.uint8]:
+    """Restore nearest-neighbor labels and reorient them in one Fortran-order gather.
+
+    Equals NiBabel's ``apply_orientation(nearest_labels(labels, factors), transform)``,
+    which flips input axis ``i`` when ``transform[i, 1]`` is -1 and moves it to output
+    axis ``transform[i, 0]``. The result is Fortran-contiguous, the order NIfTI stores
+    voxels, so writing it streams contiguous slices instead of gathering a strided view.
+    """
+    shape = tuple(round(size * factor) for size, factor in zip(labels.shape, factors, strict=True))
+    indices = [
+        _nearest_indices(source, target) for source, target in zip(labels.shape, shape, strict=True)
+    ]
+    axes = [0, 1, 2]
+    vectors = list(indices)
+    for axis, (target, flip) in enumerate(transform):
+        axes[int(target)] = axis
+        vectors[int(target)] = indices[axis][::-1] if flip == -1 else indices[axis]
+    final_shape = tuple(len(vector) for vector in vectors)
+    # The Fortran-order result is the transpose of a C-order array with reversed axes.
+    reversed_labels = np.ascontiguousarray(labels.transpose(axes[2], axes[1], axes[0]))
+    reversed_output = np.empty(final_shape[::-1], dtype=np.uint8)
+    rows, columns = np.ix_(vectors[1], vectors[0])
+
+    def gather_slab(lower: int) -> None:
+        """Copy nearest-neighbor label indices into one output slab."""
+        upper = min(lower + 8, final_shape[2])
+        planes = reversed_labels[vectors[2][lower:upper]]
+        reversed_output[lower:upper] = planes[:, rows, columns]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(gather_slab, range(0, final_shape[2], 8)))
+    return reversed_output.T
+
+
 def nearest_labels(labels: NDArray[np.uint8], factors: NDArray[np.float64]) -> NDArray[np.uint8]:
     """Restore uint8 labels with SciPy's endpoint-aligned nearest coordinates.
 
@@ -126,10 +170,9 @@ def nearest_labels(labels: NDArray[np.uint8], factors: NDArray[np.float64]) -> N
     shape = tuple(round(size * factor) for size, factor in zip(labels.shape, factors, strict=True))
     if shape == labels.shape:
         return labels.copy()
-    indices: list[NDArray[np.intp]] = []
-    for source, target in zip(labels.shape, shape, strict=True):
-        scale = (source - 1) / (target - 1) if target != 1 else 1.0
-        indices.append(np.floor(np.arange(target, dtype=np.float64) * scale + 0.5).astype(np.intp))
+    indices = [
+        _nearest_indices(source, target) for source, target in zip(labels.shape, shape, strict=True)
+    ]
     output = np.empty(shape, dtype=np.uint8)
 
     def sample_slab(lower: int) -> None:
