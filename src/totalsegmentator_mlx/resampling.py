@@ -1,5 +1,6 @@
 """CPU resampling in voxel (x, y, z) order with SciPy nearest boundaries."""
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from importlib import import_module
 from itertools import pairwise
@@ -7,6 +8,10 @@ from typing import Literal, Protocol, cast
 
 import numpy as np
 from numpy.typing import NDArray
+
+# SciPy's spline filter and sampler release the GIL; each worker owns whole lines or output
+# slabs, so the worker count changes scheduling only, never the float64 arithmetic.
+_CUBIC_WORKERS = min(16, os.cpu_count() or 1)
 
 
 class SplineFilter(Protocol):
@@ -43,7 +48,7 @@ class CoordinateSampler(Protocol):
 
 
 def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Match SciPy's 3D cubic zoom with at most eight CPU workers.
+    """Match SciPy's 3D cubic zoom with up to sixteen CPU workers.
 
     Filter full independent lines in SciPy's axis order using float64 spline
     coefficients. Output slabs sample global coordinates; splitting the input
@@ -68,7 +73,7 @@ def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDA
     filter_line = cast(SplineFilter, scipy.spline_filter1d)
     sample = cast(CoordinateSampler, scipy.map_coordinates)
     # SciPy nearest-boundary cubic zoom extends every input axis by twelve voxels.
-    padding, workers = 12, 8
+    padding, workers = 12, _CUBIC_WORKERS
     coefficients = np.pad(values, padding, mode="edge").astype(np.float64, copy=False)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for axis in range(3):
