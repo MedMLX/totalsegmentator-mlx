@@ -14,7 +14,7 @@ from medmlx_core.errors import ModelExecutionError
 
 from totalsegmentator_mlx.imageio import load_nifti, spatial_affine
 from totalsegmentator_mlx.labels import BODY_MODEL
-from totalsegmentator_mlx.models import ARITHMETIC, SOURCE_PROFILE, TASK_SPACING
+from totalsegmentator_mlx.models import ARITHMETIC, SOURCE_PROFILE, TASK_SPACING, model_folder
 
 if TYPE_CHECKING:
     from nnunet_mlx import ModelFolderPredictor
@@ -88,6 +88,14 @@ def _load_predictor(
         compile_models=False,
         accumulation="nnunet-fp16",
     )
+
+
+def prepare_models(root: Path, task_ids: tuple[int, ...]) -> None:
+    """Populate the existing Metal predictor cache while host CT preparation runs."""
+    with _runtime_lock:
+        for task_id in task_ids:
+            folder = model_folder(root, task_id).resolve()
+            _load_predictor(folder, task_id, _model_identity(folder))
 
 
 def predict_image(image: nib.Nifti1Image, folder: Path, task_id: int) -> nib.Nifti1Image:

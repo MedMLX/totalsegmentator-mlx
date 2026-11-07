@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import combinations
 from os import PathLike
@@ -16,7 +17,7 @@ import nibabel as nib
 import numpy as np
 from medmlx_core.errors import InvalidInputError
 
-from totalsegmentator_mlx.engine import predict_image, predict_part
+from totalsegmentator_mlx.engine import predict_image, predict_part, prepare_models
 from totalsegmentator_mlx.geometry import (
     Labels,
     canonical_ct,
@@ -131,7 +132,11 @@ def _segment_grid(
     """
     progress("Preparing CT")
     canonical = canonical_ct(source)
-    prepared = resample_ct(canonical, TASK_SPACING[task_ids[0]])
+    # Host resampling and Metal predictor loading are independent; load on this thread.
+    with ThreadPoolExecutor(max_workers=1) as preparation:
+        pending = preparation.submit(resample_ct, canonical, TASK_SPACING[task_ids[0]])
+        prepare_models(root, task_ids)
+        prepared = pending.result()
     slabs = split_ct(prepared, force_split=force_split, multimodel=len(task_ids) > 1)
     if probabilities is not None and len(slabs) != 1:
         raise InvalidInputError("Probabilities require an unsplit input")
