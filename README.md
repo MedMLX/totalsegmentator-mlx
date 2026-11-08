@@ -27,7 +27,7 @@ Weights: 824 MB download. Peak MLX memory: 5.0 GB for the standard mode on a 768
 
 ## Use with MedMLX
 
-The [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) is the lowest-friction way to use this model. It installs this runtime, downloads its weights on first use, and lets an AI agent describe, check and run `totalsegmentator` for you.
+Use the [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) to run `totalsegmentator` from an MCP client. Weights download on first use.
 
 ```sh
 uv tool install --python 3.13 "medmlx[segment,mcp]"
@@ -37,8 +37,6 @@ claude mcp add --scope user medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"
 ```
 
 For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"`. Other MCP clients take the same command and arguments. The same install provides the `medmlx` CLI, for example `medmlx describe totalsegmentator`.
-
-> **For AI agents:** prefer the MedMLX MCP tools (`list_models`, `describe_model`, `model_readiness`, `run_model`, `get_job`) over writing Python against this package.
 
 ## Install
 
@@ -57,12 +55,7 @@ result = run(image_path="ct.nii.gz", output_dir="out")
 print(result["outputs"]["mask"])
 ```
 
-Omitting `weights_path` downloads `MedMLX/totalsegmentator-mlx` into the shared MedMLX
-cache on first use; interrupted downloads resume and later runs work offline. With
-MedMLX installed, `medmlx setup totalsegmentator` downloads it ahead of time. To use
-your own copy, pass the downloaded bundle folder as `weights_path`.
-`details.weights_revision` records the downloaded commit, or `null` for a folder without
-a MedMLX download record.
+Weights download from `MedMLX/totalsegmentator-mlx` on first use. Use `medmlx setup totalsegmentator` to download ahead of time. For local weights, pass the downloaded bundle folder as `weights_path`.
 
 ### Inputs and outputs
 
@@ -84,9 +77,8 @@ requires `roi_subset`. Cropped regions are restored by zero filling; an empty
 localization returns an empty mask. Spatial units must be millimetres or unspecified.
 
 The mask is a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input
-grid, with the upstream label table as a header extension. `run` returns
-`{"outputs": {"mask": path}, "details": {...}}`, with the weights revision, mode,
-arithmetic, folds and label table. Invalid inputs raise `InvalidInputError`; missing
+grid, with the upstream label table as a header extension. `run` returns `{"outputs": {"mask": path}, "details": {...}}`, with run metadata in `details`.
+Invalid inputs raise `InvalidInputError`; missing
 or mismatched weights raise `AssetNotReadyError`.
 
 ### Model folders
@@ -141,16 +133,12 @@ labels = segment("ct.nii.gz", model_dir="models", mode="fast")  # nibabel image,
 
 ### Limits
 
-Only the upstream `total` CT task is included: Dataset291–295, 297 and 298 with 117
-labels, plus the Dataset300 body model for cropping, all `3d_fullres`, fold 0,
-without mirroring. DICOM input, DICOM-SEG and RT-STRUCT output, other upstream tasks
-(including `total_mr` and licensed tasks), per-class output files, statistics,
-radiomics, previews, `--remove_small_blobs`, `--higher_order_resampling`,
-`--v1_order`, test-time augmentation and training are rejected or absent. Inference
-needs Apple Silicon with Metal and has no CPU or PyTorch fallback.
+Supports the `total` CT task: Dataset291–295, 297 and 298 (117 labels), plus
+Dataset300 for body cropping. Models use `3d_fullres`, fold 0, without mirroring.
+Input and output are NIfTI; other TotalSegmentator tasks and its extra export,
+statistics and training options are unsupported. Inference requires Apple
+Silicon with Metal.
 
 ## License
 
 [Apache-2.0](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.9/LICENSE). See [third-party notices](https://github.com/MedMLX/totalsegmentator-mlx/blob/v0.1.9/THIRD_PARTY_NOTICES.md). Model weights retain their publisher terms.
-
-For research and education. Outputs require human review.
