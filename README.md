@@ -23,7 +23,9 @@ Standard mode (1.5 mm): 3D surfaces from [autoPET-III](https://huggingface.co/da
 | :--- | :--- |
 | 3D CT · NIfTI | Multilabel mask on the input grid |
 
-Weights: 824 MB download. Peak MLX memory: 5.0 GB for the standard mode on a 768×768×101 abdominal CT.
+| Model | Weights download | Peak MLX memory | Measured on |
+| :--- | ---: | ---: | :--- |
+| `totalsegmentator` | 824 MB | 5.0 GB | Standard mode, 768×768×101 abdominal CT |
 
 ## Use with MedMLX
 
@@ -73,15 +75,17 @@ Weights download from `MedMLX/totalsegmentator-mlx` on first use. Use `medmlx se
 | `body_seg` | Crop to the Dataset300 body model plus 3 mm |
 | `overwrite` | `False` by default; an existing mask is never replaced |
 
-With `roi_subset`, standard mode runs only the parts that contain those structures.
-`roi_subset` cannot be combined with `prompt` or `body_seg`, and `robust_crop`
-requires `roi_subset`. Cropped regions are restored by zero filling; an empty
-localization returns an empty mask. Spatial units must be millimetres or unspecified.
-
-The mask is a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input
-grid, with the upstream label table as a header extension. `run` returns `{"outputs": {"mask": path}, "details": {...}}`, with run metadata in `details`.
-Invalid inputs raise `InvalidInputError`; missing
-or mismatched weights raise `AssetNotReadyError`.
+- **Cropping:** with `roi_subset`, standard mode runs only the parts that contain those
+  structures. `roi_subset` cannot be combined with `prompt` or `body_seg`, and
+  `robust_crop` requires `roi_subset`. Cropped regions are restored by zero filling; an
+  empty localization returns an empty mask.
+- **Units:** spatial units must be millimetres or unspecified.
+- **Mask:** a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input grid,
+  with the upstream label table as a header extension.
+- **Return value:** `{"outputs": {"mask": path}, "details": {...}}`, with run metadata in
+  `details`.
+- **Errors:** invalid inputs raise `InvalidInputError`; missing or mismatched weights
+  raise `AssetNotReadyError`.
 
 ### Model folders
 
@@ -117,10 +121,14 @@ totalsegmentator-mlx predict -i ct.nii.gz -o mask.nii.gz --model-dir models
 
 `predict` takes the runner options as flags (`--mode`, `--organ` for `prompt`,
 `--roi-subset`, `--robust-crop`, `--body-seg`, `--overwrite`) and adds three more:
-`--model-part` runs one standard part (`organs`, `vertebrae`, `cardiac`, `muscles`
-or `ribs`), `--force-split` uses upstream's three overlapping slabs, and
-`--probabilities-path probabilities.npz` also exports local-label probabilities for
-one unsplit, uncropped model. `totalsegmentator-mlx labels` prints the label IDs.
+
+| Flag | Effect |
+| :--- | :--- |
+| `--model-part` | Runs one standard part: `organs`, `vertebrae`, `cardiac`, `muscles` or `ribs` |
+| `--force-split` | Uses upstream's three overlapping slabs |
+| `--probabilities-path probabilities.npz` | Also exports local-label probabilities for one unsplit, uncropped model |
+
+`totalsegmentator-mlx labels` prints the label IDs.
 
 ### Python API
 
@@ -135,11 +143,12 @@ labels = segment("ct.nii.gz", model_dir="models", mode="fast")  # nibabel image,
 
 ### Limits
 
-Supports the `total` CT task: Dataset291–295, 297 and 298 (117 labels), plus
-Dataset300 for body cropping. Models use `3d_fullres`, fold 0, without mirroring.
-Input and output are NIfTI; other TotalSegmentator tasks and its extra export,
-statistics and training options are unsupported. Inference requires Apple
-Silicon with Metal.
+- Supports the `total` CT task: Dataset291–295, 297 and 298 (117 labels), plus
+  Dataset300 for body cropping.
+- Models use `3d_fullres`, fold 0, without mirroring.
+- Input and output are NIfTI. Other TotalSegmentator tasks and its extra export,
+  statistics and training options are unsupported.
+- Inference requires Apple Silicon with Metal.
 
 ## License
 
