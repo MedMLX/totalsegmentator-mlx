@@ -27,21 +27,6 @@ Standard mode (1.5 mm): 3D surfaces from [autoPET-III](https://huggingface.co/da
 | :--- | ---: | ---: | :--- |
 | `totalsegmentator` | 824 MB | 5.0 GB | Standard mode, 768×768×101 abdominal CT |
 
-## Use with MedMLX
-
-Use the [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) to run `totalsegmentator` from an MCP client. Weights download on first use.
-
-```sh
-uv tool install --python 3.13 "medmlx[segment,mcp]"
-MEDMLX="$(uv tool dir --bin --color never)/medmlx"
-mkdir -p "$HOME/medmlx-work"
-claude mcp add --scope user medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"
-```
-
-For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"`. Other MCP clients take the same command and arguments. The same install provides the `medmlx` CLI, for example `medmlx describe totalsegmentator`.
-
-> **For AI agents:** prefer the MedMLX MCP tools (`list_models`, `describe_model`, `model_readiness`, `run_model`, `get_job`) over writing Python against this package.
-
 ## Install
 
 ```bash
@@ -149,6 +134,21 @@ labels = segment("ct.nii.gz", model_dir="models", mode="fast")  # nibabel image,
 - Input and output are NIfTI. Other TotalSegmentator tasks and its extra export,
   statistics and training options are unsupported.
 - Inference requires Apple Silicon with Metal.
+
+## Use with MedMLX
+
+Use the [MedMLX MCP server](https://github.com/MedMLX/medmlx/blob/main/docs/mcp.md) to run `totalsegmentator` from an MCP client. Weights download on first use.
+
+```sh
+uv tool install --python 3.13 "medmlx[segment,mcp]"
+MEDMLX="$(uv tool dir --bin --color never)/medmlx"
+mkdir -p "$HOME/medmlx-work"
+claude mcp add --scope user medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"
+```
+
+For Codex, use `codex mcp add medmlx -- "$MEDMLX" serve --root "$HOME/medmlx-work"`. Other MCP clients take the same command and arguments. The same install provides the `medmlx` CLI, for example `medmlx describe totalsegmentator`.
+
+> **For AI agents:** prefer the MedMLX MCP tools (`list_models`, `describe_model`, `model_readiness`, `run_model`, `get_job`) over writing Python against this package.
 
 ## License
 
