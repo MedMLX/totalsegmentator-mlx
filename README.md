@@ -11,8 +11,6 @@ Segment 117 CT structures with TotalSegmentator v2 in native MLX. Includes stand
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97_Hugging_Face-weights-yellow)](https://huggingface.co/MedMLX/totalsegmentator-mlx)
 [![MedMLX](https://img.shields.io/badge/MedMLX-runtime-A51C30)](https://github.com/MedMLX/medmlx)
 
-[Model weights](https://huggingface.co/MedMLX/totalsegmentator-mlx) · [MedMLX](https://github.com/MedMLX/medmlx)
-
 <img src="docs/example.png" alt="TotalSegmentator standard-mode (1.5 mm) 3D surfaces and axial CT segmentation" width="100%">
 
 Standard mode (1.5 mm): 3D surfaces from [autoPET-III](https://huggingface.co/datasets/YongchengYAO/autoPET-III-Lite) and axial CT from [AMOS22](https://zenodo.org/records/7262581). Surfaces and contours are smoothed for display.
