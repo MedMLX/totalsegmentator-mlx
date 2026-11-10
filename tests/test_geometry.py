@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from totalsegmentator_mlx.geometry import resample_ct
+from totalsegmentator_mlx.geometry import resample_ct, split_ct
 from totalsegmentator_mlx.resampling import cubic_zoom, nearest_labels
 
 
@@ -90,3 +90,17 @@ def test_ct_resampling_preserves_scaled_int32_values_and_affine() -> None:
     assert actual.get_data_dtype() == np.dtype(np.int32)
     np.testing.assert_array_equal(actual.dataobj, expected)
     np.testing.assert_array_equal(actual.affine, expected_affine)
+
+
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_split_ct_keeps_native_integer_slab_views(order: Literal["C", "F"]) -> None:
+    """Split an already resampled CT without allocating another full-volume dtype."""
+    values = np.array(np.arange(3 * 5 * 90).reshape(3, 5, 90), dtype=np.int32, order=order)
+    image = nib.Nifti1Image(values, np.diag([1.5, 1.5, 1.5, 1.0]))
+    slabs = split_ct(image, force_split=True, multimodel=True)
+    for slab, interval in zip(slabs, (slice(0, 50), slice(11, 80), slice(41, 90)), strict=True):
+        actual = np.asanyarray(slab.dataobj)
+        assert actual.dtype == np.int32
+        assert np.shares_memory(actual, values)
+        np.testing.assert_array_equal(actual, values[:, :, interval])
+        np.testing.assert_array_equal(slab.affine, image.affine)

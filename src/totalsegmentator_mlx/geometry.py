@@ -140,7 +140,8 @@ def split_ct(
 
     Splitting happens for multi-model runs whose grid exceeds 512*512*900 voxels with more
     than 200 slices, or when ``force_split``. The slabs cover the thirds of the z axis, each
-    extended by a margin of about 20 slices into its neighbors (float64 values);
+    extended by a margin of about 20 slices into its neighbors. Slabs are views of the
+    existing model-grid values, retaining their dtype;
     ``join_slabs`` drops the margins again. Raises ``InvalidInputError`` if a split is
     requested for fewer than 60 slices.
     """
@@ -151,7 +152,8 @@ def split_ct(
     if depth < 60:
         raise InvalidInputError("Splitting requires at least 60 slices on the model grid")
     third, margin = depth // 3, 20
-    values = image.get_fdata()
+    # resample_ct already staged int32 values; get_fdata would cache a full FP64 copy.
+    values = np.asanyarray(image.dataobj)
     # Each slab retains the upstream staging affine; merge uses voxel indices.
     slices = (
         slice(None, third + margin),
