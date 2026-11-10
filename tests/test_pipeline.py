@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 from medmlx_core.errors import AssetNotReadyError, InvalidInputError
+from nnunet_mlx import NiftiPrediction
 
 from totalsegmentator_mlx import pipeline
 from totalsegmentator_mlx.imageio import save_nifti
@@ -76,3 +77,78 @@ def test_run_rejects_bad_arguments(
             mode=mode,
             overwrite=overwrite,
         )
+
+
+def _probability_result(image: nib.Nifti1Image, folder: Path, task_id: int) -> NiftiPrediction:
+    """Supply owned output arrays at the engine boundary for publication-only tests."""
+    from totalsegmentator_mlx.models import model_labels
+
+    labels = np.ones(image.shape, dtype=np.uint8)
+    probabilities = np.zeros((len(model_labels(task_id)) + 1, *image.shape[::-1]), dtype=np.float32)
+    probabilities[1] = 1
+    return NiftiPrediction(nib.Nifti1Image(labels, image.affine), probabilities,
+                           {"spacing": (3.0, 3.0, 3.0), "inputs": []})
+
+
+@pytest.mark.parametrize("failed_artifact", ["probabilities", "properties"])
+def test_probability_serialization_failure_preserves_every_destination(
+    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, failed_artifact: str,
+) -> None:
+    """A failed write leaves previous mask/NPZ/PKL bytes and removes the private staging area."""
+    monkeypatch.setattr(pipeline, "predict_probabilities", _probability_result)
+    source = nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.float32), np.diag([3] * 3 + [1]))
+    mask, probabilities = tmp_path / "mask.nii.gz", tmp_path / "probabilities.npz"
+    targets = (mask, probabilities, probabilities.with_suffix(".pkl"))
+    for target in targets:
+        target.write_bytes(target.name.encode())
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise OSError("injected serialization failure")
+
+    if failed_artifact == "probabilities":
+        monkeypatch.setattr(pipeline.np, "savez_compressed", fail)
+    else:
+        monkeypatch.setattr(pipeline.pickle, "dump", fail)
+    with pytest.raises(OSError, match="serialization"):
+        pipeline.segment(source, model_dir=model_root, mode="fast", output_path=mask,
+                         probabilities_path=probabilities, overwrite=True)
+    expected = [target.name.encode() for target in targets]
+    assert [target.read_bytes() for target in targets] == expected
+    assert not list(tmp_path.glob(".totalsegmentator-*"))
+
+
+def test_probability_publication_replaces_links_and_rejects_input_output_collisions(
+    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Publication replaces destination links while preflight protects aliased user data."""
+    monkeypatch.setattr(pipeline, "predict_probabilities", _probability_result)
+    source = tmp_path / "ct.nii.gz"
+    save_nifti(nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.float32), np.diag([3] * 3 + [1])),
+               source)
+    probabilities = tmp_path / "probabilities.npz"
+    properties = probabilities.with_suffix(".pkl")
+    old = tmp_path / "user-data"
+    old.write_bytes(b"preserve")
+    for target in (probabilities, properties):
+        target.symlink_to(old)
+    # Both outputs initially alias one another; reject before replacing either.
+    with pytest.raises(InvalidInputError):
+        pipeline.segment(source, model_dir=model_root, mode="fast",
+                         probabilities_path=probabilities, overwrite=True)
+    properties.unlink()
+    other = tmp_path / "other-user-data"
+    other.write_bytes(b"also preserve")
+    properties.symlink_to(other)
+    pipeline.segment(source, model_dir=model_root, mode="fast",
+                     probabilities_path=probabilities, overwrite=True)
+    assert not probabilities.is_symlink() and not properties.is_symlink()
+    assert old.read_bytes() == b"preserve" and other.read_bytes() == b"also preserve"
+    with np.load(probabilities) as arrays:
+        assert arrays["probabilities"].dtype == np.float32
+    probabilities.unlink()
+    probabilities.hardlink_to(source)
+    before = source.read_bytes()
+    with pytest.raises(InvalidInputError):
+        pipeline.segment(source, model_dir=model_root, mode="fast",
+                         probabilities_path=probabilities, overwrite=True)
+    assert source.read_bytes() == before

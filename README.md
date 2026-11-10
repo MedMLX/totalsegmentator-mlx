@@ -124,6 +124,22 @@ labels = segment("ct.nii.gz", model_dir="models", mode="fast")  # nibabel image,
 `segment` takes the command-line options as keyword arguments, plus an optional
 `output_path`. It never downloads weights.
 
+For a long-lived Python process, the default cache retains up to eight model
+predictors. Set an explicit policy before a job when memory takes priority:
+
+```python
+from totalsegmentator_mlx import configure_predictor_cache, clear_predictor_cache
+
+configure_predictor_cache(max_entries=1, max_bytes=2 * 1024**3)
+# Run segment(...) calls with one retained network at a time.
+clear_predictor_cache()
+```
+
+The byte budget covers retained model state; inference scratch and MLX's free
+allocator cache are separate. A model exceeding the budget runs uncached.
+`predictor_cache_info()` reports these counters separately. Passing no limits
+to `configure_predictor_cache()` restores the eight-model policy.
+
 ### Limits
 
 - Supports the `total` CT task: Dataset291–295, 297 and 298 (117 labels), plus

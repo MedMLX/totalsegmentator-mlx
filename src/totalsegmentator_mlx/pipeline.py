@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import shutil
+import pickle
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import combinations
@@ -16,7 +16,7 @@ import nibabel as nib
 import numpy as np
 from medmlx_core.errors import InvalidInputError
 
-from totalsegmentator_mlx.engine import predict_image, predict_part
+from totalsegmentator_mlx.engine import predict_image, predict_probabilities
 from totalsegmentator_mlx.geometry import (
     Labels,
     canonical_ct,
@@ -29,7 +29,6 @@ from totalsegmentator_mlx.geometry import (
     source_labels,
     split_ct,
 )
-from totalsegmentator_mlx.imageio import load_nifti, save_nifti
 from totalsegmentator_mlx.labels import BODY_MODEL, QUALITY_MODELS
 from totalsegmentator_mlx.localization import (
     BODY_MARGIN_MM,
@@ -55,62 +54,46 @@ from totalsegmentator_mlx.output import (
 
 
 def _infer_parts(
-    staging: Path,
     slabs: Sequence[nib.Nifti1Image],
     root: Path,
     task_ids: tuple[int, ...],
     probabilities: Path | None,
     progress: Callable[[str], None],
 ) -> list[Labels]:
-    """Run each model on every slab and merge its local labels into global IDs in task order.
+    """Predict prepared slabs directly and merge local labels in the original task order.
 
-    Without ``probabilities`` the slabs are predicted in memory. With it (one unsplit slab
-    and one model only) predictions go through the engine's file-based path so its
-    ``.npz`` probabilities and ``.pkl`` properties can be copied to ``probabilities``.
+    Probability jobs admit one model and one unsplit slab. Their arrays and
+    reader/crop properties come from nnU-Net's verified in-memory boundary;
+    both sidecars are serialized before either destination is replaced.
     """
-    # Engine XYZ labels are views of dense ZYX arrays; match their storage during merges.
     combined = [np.zeros(slab.shape, dtype=np.uint8, order="F") for slab in slabs]
-    if probabilities is None:
-        # XYZ Fortran storage is dense CZYX to the engine, shared by all five parts.
-        model_images = [
-            nib.Nifti1Image(np.asfortranarray(slab.dataobj, dtype=np.float32), slab.affine)
-            for slab in slabs
-        ]
-        for task_id in task_ids:
-            progress(f"Predicting Dataset{task_id}")
-            folder = model_folder(root, task_id)
-            for slab, labels in zip(model_images, combined, strict=True):
-                image = predict_image(slab, folder, task_id)
-                merge_part(labels, cast(Labels, np.asanyarray(image.dataobj)), task_id)
-        return combined
-    incoming = staging / "input"
-    incoming.mkdir()
-    for index, slab in enumerate(slabs, 1):
-        save_nifti(slab, incoming / f"s{index:02d}_0000.nii.gz")
+    # XYZ Fortran storage is dense CZYX to the engine, shared by all five parts.
+    model_images = [
+        nib.Nifti1Image(np.asfortranarray(slab.dataobj, dtype=np.float32), slab.affine)
+        for slab in slabs
+    ]
     for task_id in task_ids:
         progress(f"Predicting Dataset{task_id}")
-        output = staging / str(task_id)
-        predict_part(
-            incoming,
-            output,
-            model_folder(root, task_id),
-            task_id,
-            save_probabilities=True,
-        )
-        for index, labels in enumerate(combined, 1):
-            image = load_nifti(output / f"s{index:02d}.nii.gz")
-            merge_part(labels, np.asanyarray(image.dataobj), task_id)
-        probabilities.parent.mkdir(parents=True, exist_ok=True)
-        # Stage beside the destination and rename, so an existing link is replaced rather
-        # than written through, as ``write_segmentation`` does for the mask.
-        with TemporaryDirectory(prefix=".totalsegmentator-", dir=probabilities.parent) as publish:
-            for name, target in (
-                ("s01.npz", probabilities),
-                ("s01.pkl", probabilities.with_suffix(".pkl")),
-            ):
-                staged = Path(publish) / target.name
-                shutil.copyfile(output / name, staged)
-                os.replace(staged, target)
+        folder = model_folder(root, task_id)
+        for slab, labels in zip(model_images, combined, strict=True):
+            if probabilities is None:
+                image = predict_image(slab, folder, task_id)
+            else:
+                result = predict_probabilities(slab, folder, task_id)
+                image = result.segmentation
+                probabilities.parent.mkdir(parents=True, exist_ok=True)
+                # Stage beside the destination: replace links themselves and
+                # leave both targets untouched if either serialization fails.
+                with TemporaryDirectory(prefix=".totalsegmentator-",
+                                        dir=probabilities.parent) as publish:
+                    staged = Path(publish) / probabilities.name
+                    properties = staged.with_suffix(".pkl")
+                    np.savez_compressed(staged, probabilities=result.probabilities)
+                    with properties.open("wb") as handle:
+                        pickle.dump(result.properties, handle)
+                    os.replace(staged, probabilities)
+                    os.replace(properties, probabilities.with_suffix(".pkl"))
+            merge_part(labels, cast(Labels, np.asanyarray(image.dataobj)), task_id)
     return combined
 
 
@@ -135,8 +118,7 @@ def _segment_grid(
     slabs = split_ct(prepared, force_split=force_split, multimodel=len(task_ids) > 1)
     if probabilities is not None and len(slabs) != 1:
         raise InvalidInputError("Probabilities require an unsplit input")
-    with TemporaryDirectory(prefix="totalsegmentator_mlx_") as temporary:
-        combined = _infer_parts(Path(temporary), slabs, root, task_ids, probabilities, progress)
+    combined = _infer_parts(slabs, root, task_ids, probabilities, progress)
     labels = join_slabs(combined, prepared.shape)
     if task_ids == (BODY_MODEL,):
         # Upstream cleans body components on the 6 mm grid before restoration.
@@ -391,7 +373,8 @@ def segment(
         body_seg: Crop to the Dataset300 body mask plus 3 mm.
         force_split: Split into three overlapping z slabs even for smaller volumes.
         probabilities_path: ``.npz`` destination for local-label probabilities (the engine's
-            ``.pkl`` properties go beside it).
+            ``.pkl`` reader geometry/crop properties go beside it). Arrays stay
+            in the model reader's grid. The in-memory source has ``inputs=[]``.
         overwrite: Allow replacing existing outputs.
         progress: Called with a short message at each stage.
 
