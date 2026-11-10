@@ -1,5 +1,6 @@
 """Runner argument rejection and model admission, before any inference."""
 
+import os
 from pathlib import Path
 from typing import NoReturn, cast
 
@@ -114,6 +115,40 @@ def test_probability_serialization_failure_preserves_every_destination(
                          probabilities_path=probabilities, overwrite=True)
     expected = [target.name.encode() for target in targets]
     assert [target.read_bytes() for target in targets] == expected
+    assert not list(tmp_path.glob(".totalsegmentator-*"))
+
+
+@pytest.mark.parametrize("failed_output", ["properties", "mask"])
+def test_probability_publication_failure_restores_prior_files(
+    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, failed_output: str
+) -> None:
+    monkeypatch.setattr(pipeline, "predict_probabilities", _probability_result)
+    source = nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.float32), np.diag([3] * 3 + [1]))
+    mask, probabilities = tmp_path / "mask.nii.gz", tmp_path / "probabilities.npz"
+    properties = probabilities.with_suffix(".pkl")
+    old = {path: path.name.encode() for path in (mask, probabilities, properties)}
+    for path, contents in old.items():
+        path.write_bytes(contents)
+    replace = os.replace
+    failed = False
+
+    failing_path = properties if failed_output == "properties" else mask
+
+    def fail_publication(staged: Path | str, destination: Path | str) -> None:
+        nonlocal failed
+        if destination == failing_path and not failed:
+            failed = True
+            raise OSError("injected publication failure")
+        replace(staged, destination)
+
+    monkeypatch.setattr(pipeline.os, "replace", fail_publication)
+    with pytest.raises(OSError, match="injected publication failure"):
+        pipeline.segment(
+            source, model_dir=model_root, mode="fast", output_path=mask,
+            probabilities_path=probabilities, overwrite=True,
+        )
+    for path, contents in old.items():
+        assert path.read_bytes() == contents
     assert not list(tmp_path.glob(".totalsegmentator-*"))
 
 

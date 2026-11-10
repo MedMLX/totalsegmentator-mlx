@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import os
 import pickle
+import shutil
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from itertools import combinations
 from os import PathLike
 from pathlib import Path
-from tempfile import TemporaryDirectory
-from typing import cast
+from tempfile import TemporaryDirectory, mkdtemp
+from typing import TYPE_CHECKING, cast
 
 import nibabel as nib
 import numpy as np
@@ -52,6 +54,80 @@ from totalsegmentator_mlx.output import (
     write_segmentation,
 )
 
+if TYPE_CHECKING:
+    from nnunet_mlx import NiftiPrediction
+
+
+def _publish_outputs(staged: dict[Path, Path]) -> None:
+    """Replace staged files and restore the prior output set on failure."""
+    recoveries: dict[Path, Path] = {}
+    cleanup = True
+    try:
+        backups: dict[Path, Path] = {}
+        for index, path in enumerate(staged):
+            if path.exists() or path.is_symlink():
+                if path.parent not in recoveries:
+                    recoveries[path.parent] = Path(
+                        mkdtemp(prefix=".totalsegmentator-backup-", dir=path.parent)
+                    )
+                backup = recoveries[path.parent] / str(index)
+                os.link(path, backup, follow_symlinks=False)
+                backups[path] = backup
+        changed: list[Path] = []
+        try:
+            for path, temporary in staged.items():
+                os.replace(temporary, path)
+                changed.append(path)
+        except BaseException:
+            try:
+                for path in reversed(changed):
+                    backup = backups.get(path)
+                    if backup is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        os.replace(backup, path)
+            except OSError as error:
+                cleanup = False
+                locations = ", ".join(str(folder) for folder in recoveries.values())
+                raise OSError(f"Cannot restore outputs; backups retained at {locations}") from error
+            raise
+    finally:
+        if cleanup:
+            for folder in recoveries.values():
+                shutil.rmtree(folder)
+
+
+def _write_probability_outputs(
+    image: nib.Nifti1Image,
+    prediction: NiftiPrediction,
+    probabilities: Path,
+    destination: Path | None,
+) -> None:
+    """Stage the probability sidecars and optional mask before publishing any file."""
+    probabilities.parent.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as staging:
+        folder = Path(staging.enter_context(
+            TemporaryDirectory(prefix=".totalsegmentator-", dir=probabilities.parent)
+        ))
+        staged_probabilities = folder / probabilities.name
+        staged_properties = staged_probabilities.with_suffix(".pkl")
+        np.savez_compressed(staged_probabilities, probabilities=prediction.probabilities)
+        with staged_properties.open("wb") as handle:
+            pickle.dump(prediction.properties, handle)
+        writes = {
+            probabilities: staged_probabilities,
+            probabilities.with_suffix(".pkl"): staged_properties,
+        }
+        if destination is not None:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            mask_folder = Path(staging.enter_context(
+                TemporaryDirectory(prefix=".totalsegmentator-", dir=destination.parent)
+            ))
+            staged_mask = mask_folder / destination.name
+            write_segmentation(image, staged_mask, overwrite=False)
+            writes[destination] = staged_mask
+        _publish_outputs(writes)
+
 
 def _infer_parts(
     slabs: Sequence[nib.Nifti1Image],
@@ -59,12 +135,12 @@ def _infer_parts(
     task_ids: tuple[int, ...],
     probabilities: Path | None,
     progress: Callable[[str], None],
-) -> list[Labels]:
+) -> tuple[list[Labels], NiftiPrediction | None]:
     """Predict prepared slabs directly and merge local labels in the original task order.
 
     Probability jobs admit one model and one unsplit slab. Their arrays and
     reader/crop properties come from nnU-Net's verified in-memory boundary;
-    both sidecars are serialized before either destination is replaced.
+    their sidecars are serialized after the final mask is ready.
     """
     combined = [np.zeros(slab.shape, dtype=np.uint8, order="F") for slab in slabs]
     # XYZ Fortran storage is dense CZYX to the engine, shared by all five parts.
@@ -72,6 +148,7 @@ def _infer_parts(
         nib.Nifti1Image(np.asfortranarray(slab.dataobj, dtype=np.float32), slab.affine)
         for slab in slabs
     ]
+    prediction: NiftiPrediction | None = None
     for task_id in task_ids:
         progress(f"Predicting Dataset{task_id}")
         folder = model_folder(root, task_id)
@@ -79,22 +156,10 @@ def _infer_parts(
             if probabilities is None:
                 image = predict_image(slab, folder, task_id)
             else:
-                result = predict_probabilities(slab, folder, task_id)
-                image = result.segmentation
-                probabilities.parent.mkdir(parents=True, exist_ok=True)
-                # Stage beside the destination: replace links themselves and
-                # leave both targets untouched if either serialization fails.
-                with TemporaryDirectory(prefix=".totalsegmentator-",
-                                        dir=probabilities.parent) as publish:
-                    staged = Path(publish) / probabilities.name
-                    properties = staged.with_suffix(".pkl")
-                    np.savez_compressed(staged, probabilities=result.probabilities)
-                    with properties.open("wb") as handle:
-                        pickle.dump(result.properties, handle)
-                    os.replace(staged, probabilities)
-                    os.replace(properties, probabilities.with_suffix(".pkl"))
+                prediction = predict_probabilities(slab, folder, task_id)
+                image = prediction.segmentation
             merge_part(labels, cast(Labels, np.asanyarray(image.dataobj)), task_id)
-    return combined
+    return combined, prediction
 
 
 def _segment_grid(
@@ -105,7 +170,7 @@ def _segment_grid(
     force_split: bool,
     probabilities: Path | None,
     progress: Callable[[str], None],
-) -> nib.Nifti1Image:
+) -> tuple[nib.Nifti1Image, NiftiPrediction | None]:
     """Run models sharing one spacing and restore uint8 labels to the source grid.
 
     The CT is reoriented to RAS, resampled to the models' isotropic grid,
@@ -118,14 +183,14 @@ def _segment_grid(
     slabs = split_ct(prepared, force_split=force_split, multimodel=len(task_ids) > 1)
     if probabilities is not None and len(slabs) != 1:
         raise InvalidInputError("Probabilities require an unsplit input")
-    combined = _infer_parts(slabs, root, task_ids, probabilities, progress)
+    combined, prediction = _infer_parts(slabs, root, task_ids, probabilities, progress)
     labels = join_slabs(combined, prepared.shape)
     if task_ids == (BODY_MODEL,):
         # Upstream cleans body components on the 6 mm grid before restoration.
         zooms = nib.Nifti1Image(labels, prepared.affine).header.get_zooms()
         labels = clean_body(labels, zooms)
     progress("Restoring source grid")
-    return restore_labels(labels, canonical, source)
+    return restore_labels(labels, canonical, source), prediction
 
 
 def _protect_input(destination: Path, sources: set[Path]) -> None:
@@ -422,7 +487,7 @@ def segment_request(
     report: Callable[[str], None] = progress if progress is not None else lambda _message: None
     source = load_ct(request.image)
     if crop_task is None:
-        result = _segment_grid(
+        result, prediction = _segment_grid(
             source,
             root,
             task_ids,
@@ -432,7 +497,7 @@ def segment_request(
         )
     else:
         report("Localizing body" if roi is None else "Localizing ROI subset")
-        rough = _segment_grid(
+        rough, _ = _segment_grid(
             source, root, (crop_task,), force_split=False, probabilities=None, progress=report
         )
         mask = localization_mask(np.asanyarray(rough.dataobj), None if roi is None else set(roi))
@@ -442,7 +507,7 @@ def segment_request(
         else:
             margin = BODY_MARGIN_MM if roi is None else ROI_MARGIN_MM
             cropped, box = crop_ct(source, mask, margin)
-            part = _segment_grid(
+            part, _ = _segment_grid(
                 cropped,
                 root,
                 task_ids,
@@ -453,6 +518,7 @@ def segment_request(
             labels = np.zeros(source.shape, dtype=np.uint8)
             labels[box] = np.asanyarray(part.dataobj)
             result = source_labels(labels, source)
+        prediction = None
     if request.filter_labels:
         values = np.asanyarray(result.dataobj)
         filtered = np.where(np.isin(values, list(request.selected)), values, 0).astype(np.uint8)
@@ -460,5 +526,9 @@ def segment_request(
     add_label_table(result, request.selected)
     if request.destination is not None:
         report("Saving segmentation")
+    if probabilities is not None:
+        assert prediction is not None
+        _write_probability_outputs(result, prediction, probabilities, request.destination)
+    elif request.destination is not None:
         write_segmentation(result, request.destination, overwrite=request.overwrite)
     return result
