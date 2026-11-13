@@ -1,11 +1,23 @@
-"""Small synthetic CT and model-metadata fixtures; no patient data or checkpoint downloads."""
+"""External CT and model-metadata fixtures."""
 
 import json
+import os
 from pathlib import Path
 
+import numpy as np
 import pytest
+from numpy.typing import NDArray
 
+from totalsegmentator_mlx.imageio import load_nifti
 from totalsegmentator_mlx.models import TASK_SPACING, model_labels
+
+
+@pytest.fixture(scope="session")
+def ct_data() -> NDArray[np.float32]:
+    """Read the external HCC-TACE-Seg HCC_063 contrast image."""
+    default = Path.home() / ".cache" / "medmlx" / "test-data" / "hcc_063_ct.nii.gz"
+    path = os.environ.get("MEDMLX_TEST_CT", str(default))
+    return np.asarray(load_nifti(path).dataobj, dtype=np.float32)
 
 
 @pytest.fixture

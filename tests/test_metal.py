@@ -20,6 +20,7 @@ from nnunet_mlx.storage.checkpoint import (
     InferenceCheckpointState,
     save_inference_checkpoint,
 )
+from numpy.typing import NDArray
 
 from totalsegmentator_mlx.imageio import load_nifti, save_nifti
 from totalsegmentator_mlx.medmlx import run
@@ -144,7 +145,9 @@ def _write_synthetic_model(
     save_inference_checkpoint(folder / "fold_0" / "checkpoint_final", model=model, state=state)
 
 
-def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(tmp_path: Path) -> None:
+def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(
+    tmp_path: Path, ct_data: NDArray[np.float32],
+) -> None:
     """Run the body crop and five-part merge through the runner on Metal with untrained models."""
     assert runtime_info().backend == "metal"
     root = tmp_path / "synthetic_models"
@@ -154,7 +157,8 @@ def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(tmp_pat
     _write_synthetic_model(
         root, 300, "Dataset300_body_6mm_1559subj", trainer="nnUNetTrainer", mirroring=(0, 1, 2)
     )
-    source = nib.Nifti1Image(np.full((16, 16, 16), 40, dtype=np.int16), np.diag([1.5, 1.5, 1.5, 1]))
+    image_data = ct_data[200:216, 200:216, 40:56].astype(np.int16)
+    source = nib.Nifti1Image(image_data, np.diag([1.5, 1.5, 1.5, 1]))
     image = tmp_path / "ct.nii.gz"
     save_nifti(source, image)
     result = run(
@@ -168,7 +172,9 @@ def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(tmp_pat
     assert labels.dtype == np.uint8 and np.all(labels == 92)
 
 
-def test_predictor_cache_policies_preserve_labels_and_bound_tier_residency(tmp_path: Path) -> None:
+def test_predictor_cache_policies_preserve_labels_and_bound_tier_residency(
+    tmp_path: Path, ct_data: NDArray[np.float32],
+) -> None:
     """Budget/one-network modes match warm reuse, with serialized threaded callers."""
     from totalsegmentator_mlx import engine
 
@@ -178,7 +184,7 @@ def test_predictor_cache_policies_preserve_labels_and_bound_tier_residency(tmp_p
     for task, name in tasks.items():
         _write_synthetic_model(root, task, name, trainer=("nnUNetTrainerNoMirroring" if task == 291
                                else "nnUNetTrainer_4000epochs_NoMirroring"))
-    image = nib.Nifti1Image(np.full((9, 8, 7), 40, dtype=np.float32), np.diag([1.5] * 3 + [1]))
+    image = nib.Nifti1Image(ct_data[200:209, 200:208, 40:47], np.diag([1.5] * 3 + [1]))
     engine.clear_predictor_cache()
     records: list[engine.PredictorCacheInfo] = []
     try:
@@ -219,7 +225,7 @@ def test_predictor_cache_policies_preserve_labels_and_bound_tier_residency(tmp_p
 
 
 def test_updated_checkpoint_replaces_cached_identity_and_uncached_mode_matches(
-    tmp_path: Path,
+    tmp_path: Path, ct_data: NDArray[np.float32],
 ) -> None:
     """An in-place weight edit changes predictions without retaining obsolete model state."""
     import mlx.core as mx
@@ -228,7 +234,7 @@ def test_updated_checkpoint_replaces_cached_identity_and_uncached_mode_matches(
 
     root, task = tmp_path / "changed_model", 291
     _write_synthetic_model(root, task, PARTS[0])
-    source = nib.Nifti1Image(np.full((8, 8, 8), 40, dtype=np.float32), np.diag([1.5] * 3 + [1]))
+    source = nib.Nifti1Image(ct_data[200:208, 200:208, 40:48], np.diag([1.5] * 3 + [1]))
     engine.clear_predictor_cache()
     try:
         before = engine.predict_image(source, root / str(task), task)
@@ -256,7 +262,7 @@ def test_updated_checkpoint_replaces_cached_identity_and_uncached_mode_matches(
 
 
 def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ct_data: NDArray[np.float32],
 ) -> None:
     """Keep labels, reader-grid probabilities and crop sidecars while removing CT staging."""
     from nnunet_mlx.storage.imageio import require_matching_geometry
@@ -267,8 +273,7 @@ def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
     root, task = tmp_path / "probability_models", 297
     _write_synthetic_model(root, task, "Dataset297_TotalSegmentator_total_3mm_1559subj",
                            trainer="nnUNetTrainer_4000epochs_NoMirroring")
-    values = np.zeros((9, 8, 7), dtype=np.int32)
-    values[1:-1, 2:-1, 1:-1] = 40
+    values = ct_data[200:209, 200:208, 40:47].astype(np.int32)
     affine = np.array([[0, -3, 0, 12], [3, 0, 0, 8], [0, 0, 3, -3], [0, 0, 0, 1]])
     source = nib.Nifti1Image(values, affine)
     canonical = canonical_ct(source)

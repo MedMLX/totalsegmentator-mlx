@@ -49,14 +49,11 @@ def test_resampling_matches_scipy_coordinates_and_cubic_coefficients(
     factor: float | None,
     shape: tuple[int, int, int],
     target: tuple[int, int, int],
+    ct_data: NDArray[np.float32],
 ) -> None:
     """Compare nearest and cubic resampling exactly with SciPy across shapes."""
-    rng = np.random.default_rng(42)
-    if order == 0:
-        source = rng.integers(0, 118, size=shape, dtype=np.uint8)
-    else:
-        source = (rng.normal(size=shape) * 1000).astype(">f8")
-        source[0, 0, 0] = -0.0
+    image = ct_data[200:200 + shape[0], 200:200 + shape[1], 40:40 + shape[2]]
+    source = np.asarray(image > 50, dtype=np.uint8) if order == 0 else image.astype(">f8")
     source = source.transpose(2, 1, 0)[::-1]
     factors = np.asarray(target) / source.shape if factor is None else np.full(3, factor)
     if order == 0:
@@ -72,9 +69,11 @@ def test_resampling_matches_scipy_coordinates_and_cubic_coefficients(
     np.testing.assert_array_equal(actual.view(np.uint8), expected.view(np.uint8))
 
 
-def test_ct_resampling_preserves_scaled_int32_values_and_affine() -> None:
+def test_ct_resampling_preserves_scaled_int32_values_and_affine(
+    ct_data: NDArray[np.float32],
+) -> None:
     """Compare scaled CT resampling and output affine with SciPy."""
-    values = np.arange(-315, 315, dtype=np.int16).reshape(7, 9, 10)
+    values = ct_data[200:207, 200:209, 40:50].astype(np.int16)
     affine = np.array([[0, -2.3, 0, 11], [1.7, 0, 0, -8], [0, 0, 3.1, 4], [0, 0, 0, 1]])
     source = nib.Nifti1Image(values, affine)
     source.header["scl_slope"], source.header["scl_inter"] = 1.5, -1024
@@ -93,9 +92,11 @@ def test_ct_resampling_preserves_scaled_int32_values_and_affine() -> None:
 
 
 @pytest.mark.parametrize("order", ["C", "F"])
-def test_split_ct_keeps_native_integer_slab_views(order: Literal["C", "F"]) -> None:
+def test_split_ct_keeps_native_integer_slab_views(
+    order: Literal["C", "F"], ct_data: NDArray[np.float32],
+) -> None:
     """Split an already resampled CT without allocating another full-volume dtype."""
-    values = np.array(np.arange(3 * 5 * 90).reshape(3, 5, 90), dtype=np.int32, order=order)
+    values = np.array(ct_data[200:203, 200:205, :90], dtype=np.int32, order=order)
     image = nib.Nifti1Image(values, np.diag([1.5, 1.5, 1.5, 1.0]))
     slabs = split_ct(image, force_split=True, multimodel=True)
     for slab, interval in zip(slabs, (slice(0, 50), slice(11, 80), slice(41, 90)), strict=True):

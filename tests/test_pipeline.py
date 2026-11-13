@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from medmlx_core.errors import AssetNotReadyError, InvalidInputError
 from nnunet_mlx import NiftiPrediction
+from numpy.typing import NDArray
 
 from totalsegmentator_mlx import pipeline
 from totalsegmentator_mlx.imageio import save_nifti
@@ -16,7 +17,9 @@ from totalsegmentator_mlx.medmlx import run
 
 
 @pytest.mark.parametrize("fault", ["identity", "labels", "weights"])
-def test_model_admission_fails_before_input(model_root: Path, fault: str) -> None:
+def test_model_admission_fails_before_input(
+    model_root: Path, fault: str, ct_data: NDArray[np.float32],
+) -> None:
     """Reject incomplete or incompatible model assets before inference."""
     folder = model_root / "295"
     if fault == "identity":
@@ -25,7 +28,7 @@ def test_model_admission_fails_before_input(model_root: Path, fault: str) -> Non
         (folder / "fold_0" / "checkpoint_final" / "weights.safetensors").unlink()
     else:
         (folder / "dataset.json").write_text('{"labels": {}, "channel_names": {"0": "MR"}}')
-    image = nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.int16), np.eye(4))
+    image = nib.Nifti1Image(ct_data[200:208, 200:208, 40:48].astype(np.int16), np.eye(4))
     with pytest.raises(AssetNotReadyError):
         pipeline.segment(image, model_dir=model_root)
 
@@ -42,7 +45,8 @@ def test_model_admission_fails_before_input(model_root: Path, fault: str) -> Non
     ],
 )
 def test_run_rejects_bad_arguments(
-    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, problem: str
+    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, problem: str,
+    ct_data: NDArray[np.float32],
 ) -> None:
     """Each rejection category fails before inference and before any weights download."""
 
@@ -51,7 +55,8 @@ def test_run_rejects_bad_arguments(
 
     monkeypatch.setattr("medmlx_core.weights.weights_dir", download)
     image = tmp_path / "ct.nii.gz"
-    save_nifti(nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.int16), np.diag([1.5] * 3 + [1])), image)
+    data = ct_data[200:208, 200:208, 40:48].astype(np.int16)
+    save_nifti(nib.Nifti1Image(data, np.diag([1.5] * 3 + [1])), image)
     output = tmp_path / "job"
     weights: str | None = str(model_root)
     mode = "standard"
@@ -94,10 +99,11 @@ def _probability_result(image: nib.Nifti1Image, folder: Path, task_id: int) -> N
 @pytest.mark.parametrize("failed_artifact", ["probabilities", "properties"])
 def test_probability_serialization_failure_preserves_every_destination(
     tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, failed_artifact: str,
+    ct_data: NDArray[np.float32],
 ) -> None:
     """A failed write leaves previous mask/NPZ/PKL bytes and removes the private staging area."""
     monkeypatch.setattr(pipeline, "predict_probabilities", _probability_result)
-    source = nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.float32), np.diag([3] * 3 + [1]))
+    source = nib.Nifti1Image(ct_data[200:208, 200:208, 40:48], np.diag([3] * 3 + [1]))
     mask, probabilities = tmp_path / "mask.nii.gz", tmp_path / "probabilities.npz"
     targets = (mask, probabilities, probabilities.with_suffix(".pkl"))
     for target in targets:
@@ -120,10 +126,11 @@ def test_probability_serialization_failure_preserves_every_destination(
 
 @pytest.mark.parametrize("failed_output", ["properties", "mask"])
 def test_probability_publication_failure_restores_prior_files(
-    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, failed_output: str
+    tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch, failed_output: str,
+    ct_data: NDArray[np.float32],
 ) -> None:
     monkeypatch.setattr(pipeline, "predict_probabilities", _probability_result)
-    source = nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.float32), np.diag([3] * 3 + [1]))
+    source = nib.Nifti1Image(ct_data[200:208, 200:208, 40:48], np.diag([3] * 3 + [1]))
     mask, probabilities = tmp_path / "mask.nii.gz", tmp_path / "probabilities.npz"
     properties = probabilities.with_suffix(".pkl")
     old = {path: path.name.encode() for path in (mask, probabilities, properties)}
@@ -154,11 +161,12 @@ def test_probability_publication_failure_restores_prior_files(
 
 def test_probability_publication_replaces_links_and_rejects_input_output_collisions(
     tmp_path: Path, model_root: Path, monkeypatch: pytest.MonkeyPatch,
+    ct_data: NDArray[np.float32],
 ) -> None:
     """Publication replaces destination links while preflight protects aliased user data."""
     monkeypatch.setattr(pipeline, "predict_probabilities", _probability_result)
     source = tmp_path / "ct.nii.gz"
-    save_nifti(nib.Nifti1Image(np.ones((8, 8, 8), dtype=np.float32), np.diag([3] * 3 + [1])),
+    save_nifti(nib.Nifti1Image(ct_data[200:208, 200:208, 40:48], np.diag([3] * 3 + [1])),
                source)
     probabilities = tmp_path / "probabilities.npz"
     properties = probabilities.with_suffix(".pkl")
