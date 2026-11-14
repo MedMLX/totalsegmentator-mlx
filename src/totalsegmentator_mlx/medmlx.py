@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from medmlx_core.errors import InvalidInputError
+from medmlx_core.outputs import artifact
 
 from totalsegmentator_mlx.labels import LABELS
 from totalsegmentator_mlx.models import ARITHMETIC, SOURCE_PROFILE, Mode
@@ -33,11 +34,11 @@ def _folder(name: str, value: object) -> Path:
 
 def run(
     *,
-    weights_path: str | None = None,
-    image_path: str,
-    output_dir: str,
+    weights_path: str | Path | None = None,
+    image_path: str | Path,
+    output_dir: str | Path,
     prompt: Sequence[str] | None = None,
-    mode: str = "standard",
+    mode: Mode = "standard",
     roi_subset: Sequence[str] | None = None,
     robust_crop: bool = False,
     body_seg: bool = False,
@@ -70,8 +71,11 @@ def run(
         overwrite: Replace an existing mask when true; an input alias is still refused.
 
     Returns:
-        ``{"outputs": {"mask": absolute POSIX path}, "details": {...}}``, where ``details``
-        records the backend, mode, source profile, arithmetic, folds and label table.
+        ``{"outputs": {"mask": absolute POSIX path}, "artifacts": {"mask": ...},
+        "details": {...}}``. The mask artifact is a ``label_map`` in ``image_physical`` space on
+        ``image_path``'s grid; its labels are the classes this run can write (all 117, or only
+        the ``prompt`` or ``roi_subset`` structures). ``details`` records the backend, mode,
+        source profile, arithmetic, folds and the full label table.
         Replacing an existing mask requires ``overwrite``. Every argument is checked before
         weights download. Errors are those of ``segment`` (``InvalidInputError``,
         ``AssetNotReadyError``, ``ModelExecutionError``).
@@ -86,7 +90,7 @@ def run(
         image_path,
         output_path=mask,
         prompt=prompt,
-        mode=cast(Mode, mode),
+        mode=mode,
         roi_subset=roi_subset,
         robust_crop=robust_crop,
         body_seg=body_seg,
@@ -96,6 +100,16 @@ def run(
     segment_request(request, model_dir=folder)
     return {
         "outputs": {"mask": mask.as_posix()},
+        "artifacts": {
+            "mask": artifact(
+                kind="label_map",
+                coordinate_space="image_physical",
+                grid_of="image_path",
+                labels=[
+                    {"value": number, "name": name} for number, name in request.selected.items()
+                ],
+            )
+        },
         "details": {
             "weights_revision": weights_revision(folder),
             "backend": "metal",

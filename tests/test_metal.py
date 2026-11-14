@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 import nibabel as nib
 import numpy as np
 import pytest
+from medmlx_core.outputs import validate_outputs
 from nnunet_mlx.model.network import PlainConvUNet
 from nnunet_mlx.model.topology import PlainConvUNetSpec
 from nnunet_mlx.runtime import import_mlx, runtime_info
@@ -23,6 +24,7 @@ from nnunet_mlx.storage.checkpoint import (
 from numpy.typing import NDArray
 
 from totalsegmentator_mlx.imageio import load_nifti, save_nifti
+from totalsegmentator_mlx.labels import LABELS
 from totalsegmentator_mlx.medmlx import run
 from totalsegmentator_mlx.models import model_labels
 
@@ -164,7 +166,13 @@ def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(
     result = run(
         weights_path=str(root), image_path=str(image), output_dir=str(tmp_path), body_seg=True
     )
-    mask = load_nifti(cast(dict[str, str], result["outputs"])["mask"])
+    paths, artifacts = validate_outputs(result)
+    assert artifacts["mask"]["kind"] == "label_map"
+    assert artifacts["mask"].get("grid_of") == "image_path"
+    assert artifacts["mask"].get("labels") == [
+        {"value": number, "name": name} for number, name in LABELS.items()
+    ]
+    mask = load_nifti(paths["mask"])
     assert mask.shape == source.shape
     np.testing.assert_array_equal(mask.affine, source.affine)
     labels = np.asanyarray(mask.dataobj)

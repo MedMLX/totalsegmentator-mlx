@@ -65,8 +65,9 @@ Weights download from `MedMLX/totalsegmentator-mlx` on first use. Use `medmlx se
 - **Units:** spatial units must be millimetres or unspecified.
 - **Mask:** a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input grid,
   with the upstream label table as a header extension.
-- **Return value:** `{"outputs": {"mask": path}, "details": {...}}`, with run metadata in
-  `details`.
+- **Return value:** `{"outputs": {"mask": path}, "artifacts": {"mask": ...}, "details": {...}}`.
+  The mask artifact is a label map on the input grid whose labels are the structures the run
+  can write; `details` holds run metadata.
 - **Errors:** invalid inputs raise `InvalidInputError`; missing or mismatched weights
   raise `AssetNotReadyError`.
 

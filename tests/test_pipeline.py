@@ -14,6 +14,7 @@ from numpy.typing import NDArray
 from totalsegmentator_mlx import pipeline
 from totalsegmentator_mlx.imageio import save_nifti
 from totalsegmentator_mlx.medmlx import run
+from totalsegmentator_mlx.models import Mode
 
 
 @pytest.mark.parametrize("fault", ["identity", "labels", "weights"])
@@ -80,7 +81,7 @@ def test_run_rejects_bad_arguments(
             weights_path=weights,
             image_path=str(image),
             output_dir=str(output),
-            mode=mode,
+            mode=cast(Mode, mode),
             overwrite=overwrite,
         )
 
