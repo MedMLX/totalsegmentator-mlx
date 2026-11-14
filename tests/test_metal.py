@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import pickle
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -13,6 +12,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 from medmlx_core.outputs import validate_outputs
+from nibabel.filebasedimages import FileBasedImage
 from nnunet_mlx.model.network import PlainConvUNet
 from nnunet_mlx.model.topology import PlainConvUNetSpec
 from nnunet_mlx.runtime import import_mlx, runtime_info
@@ -25,8 +25,8 @@ from numpy.typing import NDArray
 
 from totalsegmentator_mlx.imageio import load_nifti, save_nifti
 from totalsegmentator_mlx.labels import LABELS
-from totalsegmentator_mlx.medmlx import run
-from totalsegmentator_mlx.models import model_labels
+from totalsegmentator_mlx.medmlx import load_model, segment
+from totalsegmentator_mlx.models import Mode, model_labels
 
 if TYPE_CHECKING:
     from mlx.core import array
@@ -163,7 +163,7 @@ def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(
     source = nib.Nifti1Image(image_data, np.diag([1.5, 1.5, 1.5, 1]))
     image = tmp_path / "ct.nii.gz"
     save_nifti(source, image)
-    result = run(
+    result = segment(
         weights_path=str(root), image_path=str(image), output_dir=str(tmp_path), body_seg=True
     )
     paths, artifacts = validate_outputs(result)
@@ -180,93 +180,39 @@ def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(
     assert labels.dtype == np.uint8 and np.all(labels == 92)
 
 
-def test_predictor_cache_policies_preserve_labels_and_bound_tier_residency(
+def test_loaded_model_matches_one_shot_segment_across_cts(
     tmp_path: Path, ct_data: NDArray[np.float32],
 ) -> None:
-    """Budget/one-network modes match warm reuse, with serialized threaded callers."""
-    from totalsegmentator_mlx import engine
-
-    root = tmp_path / "cache_models"
-    tasks = {291: PARTS[0], 297: "Dataset297_TotalSegmentator_total_3mm_1559subj",
+    """A loaded model reuses its networks across CTs and modes with one-shot labels."""
+    root = tmp_path / "session_models"
+    tasks = {297: "Dataset297_TotalSegmentator_total_3mm_1559subj",
              298: "Dataset298_TotalSegmentator_total_6mm_1559subj"}
     for task, name in tasks.items():
-        _write_synthetic_model(root, task, name, trainer=("nnUNetTrainerNoMirroring" if task == 291
-                               else "nnUNetTrainer_4000epochs_NoMirroring"))
-    image = nib.Nifti1Image(ct_data[200:209, 200:208, 40:47], np.diag([1.5] * 3 + [1]))
-    engine.clear_predictor_cache()
-    records: list[engine.PredictorCacheInfo] = []
-    try:
-        expected = {task: engine.predict_image(image, root / str(task), task) for task in tasks}
-        all_resident = engine.predictor_cache_info()
-        assert all_resident["entries"] == 3
-        engine.configure_predictor_cache(max_entries=1)
-        for task in (*tasks, *tasks):
-            result = engine.predict_image(image, root / str(task), task)
-            np.testing.assert_array_equal(result.dataobj, expected[task].dataobj)
-            info = engine.predictor_cache_info()
-            assert info["entries"] == 1
-            records.append(info)
-        assert max(info["retained_bytes"] for info in records) < all_resident["retained_bytes"]
-        budget = max(info["retained_bytes"] for info in records)
-        engine.configure_predictor_cache(max_bytes=budget)
-
-        def predict(task: int) -> nib.Nifti1Image:
-            return engine.predict_image(image, root / str(task), task)
-
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            results = list(pool.map(predict, (*tasks, *tasks)))
-        for task, result in zip((*tasks, *tasks), results, strict=True):
-            np.testing.assert_array_equal(result.dataobj, expected[task].dataobj)
-        bounded = engine.predictor_cache_info()
-        assert bounded["retained_bytes"] <= budget
-        assert bounded["entries"] <= 1
-        engine.clear_predictor_cache()
-        cleared = engine.predictor_cache_info()
-        assert cleared["entries"] == cleared["retained_bytes"] == 0
-        assert cleared["mlx_active_bytes"] is not None
-        assert cleared["mlx_cache_bytes"] is not None
-        assert all_resident["mlx_active_bytes"] is not None
-        assert cleared["mlx_active_bytes"] < all_resident["mlx_active_bytes"]
-    finally:
-        engine.configure_predictor_cache()
-        engine.clear_predictor_cache()
-
-
-def test_updated_checkpoint_replaces_cached_identity_and_uncached_mode_matches(
-    tmp_path: Path, ct_data: NDArray[np.float32],
-) -> None:
-    """An in-place weight edit changes predictions without retaining obsolete model state."""
-    import mlx.core as mx
-
-    from totalsegmentator_mlx import engine
-
-    root, task = tmp_path / "changed_model", 291
-    _write_synthetic_model(root, task, PARTS[0])
-    source = nib.Nifti1Image(ct_data[200:208, 200:208, 40:48], np.diag([1.5] * 3 + [1]))
-    engine.clear_predictor_cache()
-    try:
-        before = engine.predict_image(source, root / str(task), task)
-        assert np.all(np.asanyarray(before.dataobj) == 1)
-        weights = root / str(task) / "fold_0/checkpoint_final/weights.safetensors"
-        state = mx.load(str(weights))
-        assert isinstance(state, dict)
-        head = next(name for name in state if name.endswith("seg0.bias"))
-        values = np.zeros(len(model_labels(task)) + 1, dtype=np.float32)
-        values[2] = 1e3
-        state[head] = mx.array(values)
-        save_weights = cast(Callable[[str, dict[str, mx.array]], None],
-                            vars(mx)["save_safetensors"])
-        save_weights(str(weights), state)
-        after = engine.predict_image(source, root / str(task), task)
-        assert np.all(np.asanyarray(after.dataobj) == 2)
-        assert engine.predictor_cache_info()["entries"] == 1
-        engine.configure_predictor_cache(max_bytes=0)
-        uncached = engine.predict_image(source, root / str(task), task)
-        np.testing.assert_array_equal(uncached.dataobj, after.dataobj)
-        assert engine.predictor_cache_info()["entries"] == 0
-    finally:
-        engine.configure_predictor_cache()
-        engine.clear_predictor_cache()
+        _write_synthetic_model(root, task, name, trainer="nnUNetTrainer_4000epochs_NoMirroring")
+    images: list[Path] = []
+    for index, offset in enumerate((200, 230)):
+        image = tmp_path / f"ct{index}.nii.gz"
+        data = ct_data[offset:offset + 9, 200:208, 40:47].astype(np.int16)
+        save_nifti(nib.Nifti1Image(data, np.diag([3.0] * 3 + [1])), image)
+        images.append(image)
+    modes: tuple[Mode, ...] = ("fast", "coarse")
+    cases: list[tuple[Path, Mode]] = [(image, mode) for image in images for mode in modes]
+    expected = [
+        load_nifti(cast(dict[str, str], segment(
+            image_path=image, output_dir=tmp_path / f"one-shot{index}", weights_path=root,
+            mode=mode,
+        )["outputs"])["mask"])
+        for index, (image, mode) in enumerate(cases)
+    ]
+    with load_model(weights_path=root) as model:
+        for index, (image, mode) in enumerate(cases):
+            result = model.segment(image_path=image, output_dir=tmp_path / f"loaded{index}",
+                                   mode=mode)
+            actual = load_nifti(cast(dict[str, str], result["outputs"])["mask"])
+            np.testing.assert_array_equal(actual.dataobj, expected[index].dataobj)
+            np.testing.assert_array_equal(actual.affine, expected[index].affine)
+    with pytest.raises(RuntimeError, match="closed"):
+        model.segment(image_path=images[0], output_dir=tmp_path / "closed")
 
 
 def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
@@ -275,7 +221,7 @@ def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
     """Keep labels, reader-grid probabilities and crop sidecars while removing CT staging."""
     from nnunet_mlx.storage.imageio import require_matching_geometry
 
-    from totalsegmentator_mlx import engine, pipeline
+    from totalsegmentator_mlx import engine
     from totalsegmentator_mlx.geometry import canonical_ct, resample_ct, restore_labels
 
     root, task = tmp_path / "probability_models", 297
@@ -289,18 +235,27 @@ def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
     incoming = tmp_path / "legacy_input"
     incoming.mkdir()
     save_nifti(prepared, incoming / "case_0000.nii.gz")
-    engine.predict_part(incoming, tmp_path / "legacy", root / str(task), task,
-                        save_probabilities=True)
+    engine.load_predictor(root / str(task), task).predict_folder(
+        incoming, tmp_path / "legacy", save_probabilities=True, overwrite=False
+    )
     expected_local = load_nifti(tmp_path / "legacy/case.nii.gz")
     expected = restore_labels(np.asarray(expected_local.dataobj, dtype=np.uint8), canonical, source)
-    probabilities = tmp_path / "probabilities.npz"
+    source_file = tmp_path / "ct.nii.gz"
+    save_nifti(source, source_file)
+    save = cast(Callable[[nib.Nifti1Image, str | Path], None], vars(FileBasedImage)["to_filename"])
 
-    def unexpected_save(_: nib.Nifti1Image, *args: object, **kwargs: object) -> None:
-        pytest.fail("In-memory probability prediction tried to stage a NIfTI image")
+    def mask_only_save(image: nib.Nifti1Image, filename: str | Path, *args: object) -> None:
+        if not str(filename).endswith("mask.nii.gz"):
+            pytest.fail("In-memory probability prediction tried to stage a NIfTI image")
+        save(image, filename)
 
-    monkeypatch.setattr(nib.Nifti1Image, "to_filename", unexpected_save)
-    actual = pipeline.segment(source, model_dir=root, mode="fast",
-                              probabilities_path=probabilities)
+    monkeypatch.setattr(nib.Nifti1Image, "to_filename", mask_only_save)
+    result = segment(image_path=source_file, output_dir=tmp_path / "out", weights_path=root,
+                     mode="fast", probabilities=True)
+    paths, _ = validate_outputs(result)
+    actual = load_nifti(paths["mask"])
+    probabilities = Path(paths["probabilities"])
+    assert Path(paths["probability_properties"]) == probabilities.with_suffix(".pkl")
     np.testing.assert_array_equal(actual.dataobj, expected.dataobj)
     np.testing.assert_array_equal(actual.affine, expected.affine)
     with np.load(probabilities) as current, np.load(tmp_path / "legacy/case.npz") as previous:
@@ -314,4 +269,3 @@ def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
                   "shape_after_cropping_and_before_resampling", "labels", "regions_class_order"):
         assert properties[field] == baseline[field]
     assert properties["inputs"] == []
-    engine.clear_predictor_cache()

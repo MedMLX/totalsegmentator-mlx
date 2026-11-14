@@ -36,9 +36,9 @@ uv pip install "totalsegmentator-mlx>=0.2.0"
 ## Run
 
 ```python
-from totalsegmentator_mlx.medmlx import run
+from totalsegmentator_mlx import segment
 
-result = run(image_path="ct.nii.gz", output_dir="out")
+result = segment(image_path="ct.nii.gz", output_dir="out")
 print(result["outputs"]["mask"])
 ```
 
@@ -49,25 +49,31 @@ Weights download from `MedMLX/totalsegmentator-mlx` on first use. Use `medmlx se
 | Argument | Meaning |
 | --- | --- |
 | `image_path` | One finite 3D CT in NIfTI-1 or NIfTI-2, in Hounsfield units |
-| `output_dir` | Directory for `mask.nii.gz` |
+| `output_dir` | Directory for `mask.nii.gz` (and the probability files) |
 | `weights_path` | Optional root of the model folders below |
 | `mode` | `standard` (default, five 1.5 mm parts), `fast` (3 mm model, upstream `--fast`) or `coarse` (6 mm model, upstream `--fastest`) |
-| `prompt` | Structure names to keep after inference; label IDs stay global |
+| `classes` | Structure names to keep after inference; label IDs stay global |
+| `model_part` | One standard part: `organs`, `vertebrae`, `cardiac`, `muscles` or `ribs` |
 | `roi_subset` | Locate these structures, crop to them plus 20 mm and drop other labels |
 | `robust_crop` | Locate `roi_subset` with the 3 mm model instead of the 6 mm one |
 | `body_seg` | Crop to the Dataset300 body model plus 3 mm |
-| `overwrite` | `False` by default; an existing mask is never replaced |
+| `force_split` | Use upstream's three overlapping slabs even for smaller volumes |
+| `probabilities` | Also write `probabilities.npz` and `probabilities.pkl` for one uncropped model |
+| `overwrite` | `False` by default; existing outputs are never replaced |
 
 - **Cropping:** with `roi_subset`, standard mode runs only the parts that contain those
-  structures. `roi_subset` cannot be combined with `prompt` or `body_seg`, and
+  structures. `roi_subset` cannot be combined with `classes`, `model_part` or `body_seg`, and
   `robust_crop` requires `roi_subset`. Cropped regions are restored by zero filling; an
   empty localization returns an empty mask.
 - **Units:** spatial units must be millimetres or unspecified.
 - **Mask:** a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input grid,
   with the upstream label table as a header extension.
-- **Return value:** `{"outputs": {"mask": path}, "artifacts": {"mask": ...}, "details": {...}}`.
-  The mask artifact is a label map on the input grid whose labels are the structures the run
-  can write; `details` holds run metadata.
+- **Probabilities:** float32 local-label probabilities on the model reader's grid, with
+  nnU-Net's geometry and crop properties in the `.pkl` beside them.
+- **Return value:** `{"outputs": {"mask": path}, "artifacts": {"mask": ...}, "details": {...}}`,
+  plus the `probabilities` and `probability_properties` roles when requested. The mask
+  artifact is a label map on the input grid whose labels are the structures the run can
+  write; `details` holds run metadata.
 - **Errors:** invalid inputs raise `InvalidInputError`; missing or mismatched weights
   raise `AssetNotReadyError`.
 
@@ -85,61 +91,32 @@ single model folder can be passed directly when only that dataset is needed.
 | `298/` | 6 mm total model | `coarse`; `roi_subset` |
 | `300/` | 6 mm body model | `body_seg` |
 
+### Several CTs
+
+`segment` loads each network for its part and releases it before the next one. To
+segment several CTs, load the model once; its networks stay loaded until it closes:
+
+```python
+from totalsegmentator_mlx import load_model
+
+with load_model() as model:
+    for name in ("ct1", "ct2"):
+        model.segment(image_path=f"{name}.nii.gz", output_dir=name)
+```
+
+`model.segment` takes the same arguments as `segment` except `weights_path`. Standard
+mode with crops keeps up to eight networks loaded.
+
 ### Command line
 
-Download the [safetensors model bundle](https://huggingface.co/MedMLX/totalsegmentator-mlx),
-then segment:
-
 ```bash
-python - <<'PY'
-from huggingface_hub import snapshot_download
-
-snapshot_download(
-    "MedMLX/totalsegmentator-mlx",
-    revision="6c03d6f90ccf53f224c3985cbdecf1eaa96555af",
-    local_dir="models",
-)
-PY
-totalsegmentator-mlx predict -i ct.nii.gz -o mask.nii.gz --model-dir models
+totalsegmentator-mlx predict -i ct.nii.gz -o out
 ```
 
-`predict` takes the runner options as flags (`--mode`, `--organ` for `prompt`,
-`--roi-subset`, `--robust-crop`, `--body-seg`, `--overwrite`) and adds three more:
-
-| Flag | Effect |
-| :--- | :--- |
-| `--model-part` | Runs one standard part: `organs`, `vertebrae`, `cardiac`, `muscles` or `ribs` |
-| `--force-split` | Uses upstream's three overlapping slabs |
-| `--probabilities-path probabilities.npz` | Also exports local-label probabilities for one unsplit, uncropped model |
-
+`predict` takes the arguments above as flags (`--weights`, `--mode`, `--classes`,
+`--model-part`, `--roi-subset`, `--robust-crop`, `--body-seg`, `--force-split`,
+`--probabilities`, `--overwrite`) and prints the output paths.
 `totalsegmentator-mlx labels` prints the label IDs.
-
-### Python API
-
-```python
-from totalsegmentator_mlx import segment
-
-labels = segment("ct.nii.gz", model_dir="models", mode="fast")  # nibabel image, uint8
-```
-
-`segment` takes the command-line options as keyword arguments, plus an optional
-`output_path`. It never downloads weights.
-
-For a long-lived Python process, the default cache retains up to eight model
-predictors. Set an explicit policy before a job when memory takes priority:
-
-```python
-from totalsegmentator_mlx import configure_predictor_cache, clear_predictor_cache
-
-configure_predictor_cache(max_entries=1, max_bytes=2 * 1024**3)
-# Run segment(...) calls with one retained network at a time.
-clear_predictor_cache()
-```
-
-The byte budget covers retained model state; inference scratch and MLX's free
-allocator cache are separate. A model exceeding the budget runs uncached.
-`predictor_cache_info()` reports these counters separately. Passing no limits
-to `configure_predictor_cache()` restores the eight-model policy.
 
 ### Limits
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -21,18 +22,18 @@ class Arguments(argparse.Namespace):
     """
 
     command: str
-    input_path: Path
-    output_path: Path
-    model_dir: Path
+    image_path: Path
+    output_dir: Path
+    weights_path: Path | None
     mode: str
     model_part: str | None
-    organ: list[str] | None
+    classes: list[str] | None
     roi_subset: list[str] | None
     robust_crop: bool
     body_seg: bool
     force_split: bool
     overwrite: bool
-    probabilities_path: Path | None
+    probabilities: bool
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -40,9 +41,11 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Native TotalSegmentator v2 CT inference on Metal")
     subparsers = parser.add_subparsers(dest="command", required=True)
     predict = subparsers.add_parser("predict", help="Segment a NIfTI CT on its original grid")
-    predict.add_argument("-i", "--input", dest="input_path", type=Path, required=True)
-    predict.add_argument("-o", "--output", dest="output_path", type=Path, required=True)
-    predict.add_argument("--model-dir", type=Path, required=True)
+    predict.add_argument("-i", "--image", dest="image_path", type=Path, required=True)
+    predict.add_argument("-o", "--output-dir", type=Path, required=True)
+    predict.add_argument(
+        "--weights", dest="weights_path", type=Path, help="Weights folder; default downloads"
+    )
     predict.add_argument(
         "--mode",
         choices=["standard", *QUALITY_MODELS],
@@ -50,7 +53,9 @@ def _parser() -> argparse.ArgumentParser:
         help="standard: five 1.5 mm parts; fast: 3 mm model; coarse: 6 mm model (upstream fastest)",
     )
     predict.add_argument("--model-part", choices=list(MODEL_PARTS))
-    predict.add_argument("--organ", nargs="+", help="Filter canonical organ names after inference")
+    predict.add_argument(
+        "--classes", nargs="+", help="Keep these canonical structure names after inference"
+    )
     predict.add_argument(
         "--roi-subset",
         nargs="+",
@@ -64,7 +69,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     predict.add_argument("--force-split", action="store_true")
     predict.add_argument("--overwrite", action="store_true")
-    predict.add_argument("--probabilities-path", type=Path)
+    predict.add_argument(
+        "--probabilities", action="store_true", help="Also write probabilities.npz and .pkl"
+    )
     subparsers.add_parser("labels", help="Print released global label IDs as JSON")
     return parser
 
@@ -74,31 +81,31 @@ def main(argv: list[str] | None = None) -> None:
 
     Exceptions that are ``OSError``, ``ValueError``, ``RuntimeError`` or ``ImportError``
     (which includes the ``medmlx_core`` errors) are reported on stderr with exit status 2.
-    ``predict`` prints the output path on success.
+    ``predict`` reports stages on stderr and prints the output paths as JSON on success.
     """
     parser = _parser()
     args = parser.parse_args(argv, namespace=Arguments())
     if args.command == "labels":
         print(json.dumps(LABELS, indent=2))
         return
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(message)s")
     try:
-        from totalsegmentator_mlx.pipeline import segment
+        from totalsegmentator_mlx.medmlx import segment
 
-        segment(
-            args.input_path,
-            model_dir=args.model_dir,
-            output_path=args.output_path,
+        result = segment(
+            image_path=args.image_path,
+            output_dir=args.output_dir,
+            weights_path=args.weights_path,
+            classes=args.classes,
             mode=cast("Mode", args.mode),
             model_part=args.model_part,
-            prompt=args.organ,
             roi_subset=args.roi_subset,
             robust_crop=args.robust_crop,
             body_seg=args.body_seg,
             force_split=args.force_split,
+            probabilities=args.probabilities,
             overwrite=args.overwrite,
-            probabilities_path=args.probabilities_path,
-            progress=lambda message: print(message, file=sys.stderr, flush=True),
         )
-        print(args.output_path)
+        print(json.dumps(result["outputs"], indent=2))
     except (OSError, ValueError, RuntimeError, ImportError) as error:
         parser.exit(2, f"{parser.prog}: {error}\n")

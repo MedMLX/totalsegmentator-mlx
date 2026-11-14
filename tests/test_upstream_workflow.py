@@ -7,16 +7,18 @@ Fixture provenance documents the source revisions and the controlled labels.
 """
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import nibabel as nib
 import numpy as np
 import pytest
 
+from totalsegmentator_mlx import segment
+from totalsegmentator_mlx.engine import Networks
 from totalsegmentator_mlx.imageio import load_nifti
 from totalsegmentator_mlx.models import Mode, model_labels
-from totalsegmentator_mlx.pipeline import segment
 
 
 class WorkflowOptions(TypedDict, total=False):
@@ -45,6 +47,7 @@ class WorkflowOptions(TypedDict, total=False):
     ],
 )
 def test_outer_workflow_matches_independent_reference(
+    tmp_path: Path,
     model_root: Path,
     monkeypatch: pytest.MonkeyPatch,
     source: str,
@@ -54,21 +57,31 @@ def test_outer_workflow_matches_independent_reference(
     """Compare source-grid labels and metadata with upstream workflow fixtures."""
 
     def predict(
-        source: nib.Nifti1Image,
+        networks: Networks,
+        sources: Sequence[nib.Nifti1Image],
         folder: Path,
         task_id: int,
-    ) -> nib.Nifti1Image:
+    ) -> list[nib.Nifti1Image]:
         """Produce deterministic task labels in place of the learned network."""
-        values = np.asarray(source.dataobj, dtype=np.int64)
-        labels = ((values + task_id) % (max(model_labels(task_id)) + 1)).astype(np.uint8)
-        return nib.Nifti1Image(labels, source.affine)
+        results: list[nib.Nifti1Image] = []
+        for source in sources:
+            values = np.asarray(source.dataobj, dtype=np.int64)
+            labels = ((values + task_id) % (max(model_labels(task_id)) + 1)).astype(np.uint8)
+            results.append(nib.Nifti1Image(labels, source.affine))
+        return results
 
-    monkeypatch.setattr("totalsegmentator_mlx.pipeline.predict_image", predict)
+    monkeypatch.setattr(Networks, "predict_images", predict)
     default = Path(__file__).resolve().parents[1] / "work" / "real-reference"
     directory = os.environ.get("MEDMLX_TEST_REFERENCES", str(default))
     fixtures = Path(directory)
     expected = load_nifti(fixtures / f"{reference}_reference.nii.gz")
-    actual = segment(fixtures / f"{source}_ct.nii.gz", model_dir=model_root, **options)
+    result = segment(
+        image_path=fixtures / f"{source}_ct.nii.gz",
+        output_dir=tmp_path,
+        weights_path=model_root,
+        **options,
+    )
+    actual = load_nifti(Path(cast(dict[str, str], result["outputs"])["mask"]))
     np.testing.assert_array_equal(actual.dataobj, expected.dataobj)
     np.testing.assert_array_equal(actual.affine, expected.affine)
     assert actual.header.binaryblock == expected.header.binaryblock

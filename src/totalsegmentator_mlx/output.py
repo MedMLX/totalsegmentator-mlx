@@ -1,20 +1,16 @@
-"""Global label merging and self-describing NIfTI segmentation output."""
+"""Global label merging and the NIfTI label table of the segmentation output."""
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import cast
 
 import nibabel as nib
 import numpy as np
-from medmlx_core.errors import InvalidInputError, ModelExecutionError
+from medmlx_core.errors import ModelExecutionError
 from nibabel.nifti1 import Nifti1Extension
 
 from totalsegmentator_mlx.geometry import Labels
-from totalsegmentator_mlx.imageio import save_nifti
 from totalsegmentator_mlx.labels import LABELS, PART_LABELS
 from totalsegmentator_mlx.models import model_labels
 
@@ -81,36 +77,3 @@ def add_label_table(image: nib.Nifti1Image, labels: Mapping[int, str]) -> None:
         "</VolumeInformation></CaretExtension>\n              "
     )
     cast(list[object], image.header.extensions).append(Nifti1Extension(0, xml.encode()))
-
-
-def require_folder(path: Path) -> None:
-    """Reject an output path whose nearest existing parent is a file, not a folder."""
-    parent = path.parent
-    while not parent.exists() and parent != parent.parent:
-        parent = parent.parent
-    if not parent.is_dir():
-        raise InvalidInputError(f"Output folder is a file: {parent}")
-
-
-def validate_destination(path: Path, *, overwrite: bool) -> None:
-    """Require a ``.nii``/``.nii.gz`` path that is new, or an existing file with ``overwrite``."""
-    if not str(path).endswith((".nii", ".nii.gz")):
-        raise InvalidInputError("Output must be a .nii or .nii.gz multilabel image")
-    require_folder(path)
-    if (path.exists() or path.is_symlink()) and (not overwrite or not path.is_file()):
-        raise InvalidInputError(f"Output already exists: {path}")
-
-
-def write_segmentation(image: nib.Nifti1Image, path: Path, *, overwrite: bool) -> None:
-    """Write the mask, creating parent directories; the format follows the file extension.
-
-    The mask is staged in a private directory beside ``path`` and renamed into place,
-    so a failed write never replaces an earlier mask.
-    """
-    validate_destination(path, overwrite=overwrite)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # NiBabel follows links when opening the staging path.
-    with TemporaryDirectory(prefix=".totalsegmentator-", dir=path.parent) as staging_dir:
-        partial = Path(staging_dir) / path.name
-        save_nifti(image, partial)
-        os.replace(partial, path)
