@@ -9,7 +9,7 @@ Fixture provenance documents the source revisions and the controlled labels.
 import os
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 import nibabel as nib
 import numpy as np
@@ -81,7 +81,7 @@ def test_outer_workflow_matches_independent_reference(
         weights_path=model_root,
         **options,
     )
-    actual = load_nifti(Path(cast(dict[str, str], result["outputs"])["mask"]))
+    actual = load_nifti(Path(result["outputs"]["mask"]))
     np.testing.assert_array_equal(actual.dataobj, expected.dataobj)
     np.testing.assert_array_equal(actual.affine, expected.affine)
     assert actual.header.binaryblock == expected.header.binaryblock

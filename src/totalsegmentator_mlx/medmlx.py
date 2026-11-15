@@ -8,11 +8,12 @@ from __future__ import annotations
 import pickle
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 import numpy as np
 from medmlx_core.files import PathLike, input_file, output_targets, publish
-from medmlx_core.outputs import Artifact, artifact
+from medmlx_core.outputs import Artifact, OutputLabel, artifact
+from medmlx_core.outputs import RunResult as _RunResult
 from medmlx_core.weights import model_folder, weights_revision
 
 from totalsegmentator_mlx.labels import LABELS
@@ -43,7 +44,19 @@ OUTPUT_FILES = {
     "probability_properties": "probabilities.pkl",
 }
 
-type RunResult = dict[str, object]
+class Details(TypedDict):
+    """Run record in ``RunResult["details"]``; ``labels`` lists every model label."""
+
+    weights_revision: str | None
+    backend: Literal["metal"]
+    mode: Mode
+    source_profile: str
+    precision: str
+    folds: list[int]
+    labels: list[OutputLabel]
+
+
+type RunResult = _RunResult[Details]
 
 
 def run(

@@ -198,17 +198,17 @@ def test_loaded_model_matches_one_shot_segment_across_cts(
     modes: tuple[Mode, ...] = ("fast", "coarse")
     cases: list[tuple[Path, Mode]] = [(image, mode) for image in images for mode in modes]
     expected = [
-        load_nifti(cast(dict[str, str], run(
+        load_nifti(run(
             image_path=image, output_dir=tmp_path / f"one-shot{index}", weights_path=root,
             mode=mode,
-        )["outputs"])["mask"])
+        )["outputs"]["mask"])
         for index, (image, mode) in enumerate(cases)
     ]
     with load_model(weights_path=root) as model:
         for index, (image, mode) in enumerate(cases):
             result = model.run(image_path=image, output_dir=tmp_path / f"loaded{index}",
                                    mode=mode)
-            actual = load_nifti(cast(dict[str, str], result["outputs"])["mask"])
+            actual = load_nifti(result["outputs"]["mask"])
             np.testing.assert_array_equal(actual.dataobj, expected[index].dataobj)
             np.testing.assert_array_equal(actual.affine, expected[index].affine)
     with pytest.raises(RuntimeError, match="closed"):
