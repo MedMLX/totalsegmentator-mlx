@@ -28,7 +28,7 @@ MODEL = {
     "id": "totalsegmentator",
     "label": "TotalSegmentator",
     "task": "segmentation",
-    "run": "totalsegmentator_mlx.medmlx:segment",
+    "run": "totalsegmentator_mlx.medmlx:run",
     "cohort": "totalsegmentator_mlx.medmlx:load_model",
     # Measured MLX peak for standard mode on a 768x768x101 abdominal CT; larger inputs need more.
     "peak_memory_gb": 5.0,
@@ -46,7 +46,7 @@ OUTPUT_FILES = {
 type RunResult = dict[str, object]
 
 
-def segment(
+def run(
     *,
     image_path: PathLike,
     output_dir: PathLike,
@@ -128,8 +128,8 @@ class TotalSegmentatorModel:
     """TotalSegmentator with its weights folder fixed and networks kept loaded until closed.
 
     Each network loads on first use and stays resident, so later CTs skip loading;
-    standard mode with crops keeps up to eight networks. :meth:`segment` has the
-    :func:`segment` contract without ``weights_path``. CTs run one at a time.
+    standard mode with crops keeps up to eight networks. :meth:`run` has the
+    :func:`run` contract without ``weights_path``. CTs run one at a time.
     """
 
     def __init__(self, *, weights_path: PathLike | None = None) -> None:
@@ -140,7 +140,7 @@ class TotalSegmentatorModel:
         self._revision = weights_revision(self._folder)
         self._networks: Networks | None = Networks(retain=True)
 
-    def segment(
+    def run(
         self,
         *,
         image_path: PathLike,
@@ -155,7 +155,7 @@ class TotalSegmentatorModel:
         probabilities: bool = False,
         overwrite: bool = False,
     ) -> RunResult:
-        """Segment one CT with the loaded networks; see :func:`segment`.
+        """Segment one CT with the loaded networks; see :func:`run`.
 
         Raises:
             RuntimeError: The model is closed.
@@ -171,7 +171,7 @@ class TotalSegmentatorModel:
         return _segment(request, targets, self._folder, self._revision, networks)
 
     def close(self) -> None:
-        """Release the networks; later :meth:`segment` calls raise ``RuntimeError``."""
+        """Release the networks; later :meth:`run` calls raise ``RuntimeError``."""
         if self._networks is not None:
             self._networks.close()
             self._networks = None
@@ -188,7 +188,7 @@ class TotalSegmentatorModel:
 def load_model(*, weights_path: PathLike | None = None) -> TotalSegmentatorModel:
     """Load TotalSegmentator once to segment several CTs, or for a MedMLX cohort.
 
-    ``weights_path`` has the meaning it has in :func:`segment`. Close the returned
+    ``weights_path`` has the meaning it has in :func:`run`. Close the returned
     model, or use it as a context manager, to release its networks.
     """
     return TotalSegmentatorModel(weights_path=weights_path)

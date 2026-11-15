@@ -9,7 +9,7 @@ import pytest
 from medmlx_core.errors import AssetNotReadyError, InvalidInputError
 from numpy.typing import NDArray
 
-from totalsegmentator_mlx import segment
+from totalsegmentator_mlx import run
 from totalsegmentator_mlx.imageio import save_nifti
 from totalsegmentator_mlx.models import Mode
 
@@ -29,7 +29,7 @@ def test_model_admission_fails_before_input(
     image = tmp_path / "ct.nii.gz"
     save_nifti(nib.Nifti1Image(ct_data[200:208, 200:208, 40:48].astype(np.int16), np.eye(4)), image)
     with pytest.raises(AssetNotReadyError):
-        segment(image_path=image, output_dir=tmp_path / "out", weights_path=model_root)
+        run(image_path=image, output_dir=tmp_path / "out", weights_path=model_root)
 
 
 @pytest.mark.parametrize(
@@ -75,7 +75,7 @@ def test_segment_rejects_bad_arguments(
     else:
         weights, mode = None, "fastest"
     with pytest.raises(InvalidInputError):
-        segment(
+        run(
             weights_path=weights,
             image_path=str(image),
             output_dir=str(output),

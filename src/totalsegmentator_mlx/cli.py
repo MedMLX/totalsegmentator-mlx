@@ -90,9 +90,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(message)s")
     try:
-        from totalsegmentator_mlx.medmlx import segment
+        from totalsegmentator_mlx.medmlx import run
 
-        result = segment(
+        result = run(
             image_path=args.image_path,
             output_dir=args.output_dir,
             weights_path=args.weights_path,

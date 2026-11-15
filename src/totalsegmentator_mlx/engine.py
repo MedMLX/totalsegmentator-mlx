@@ -30,9 +30,9 @@ class _Memory(Protocol):
 
 
 class Networks:
-    """Fold-0 networks on Metal, owned by one ``segment`` call or one loaded model.
+    """Fold-0 networks on Metal, owned by one ``run`` call or one loaded model.
 
-    With ``retain=False`` (one-shot ``segment``) a network is loaded for one model's
+    With ``retain=False`` (one-shot ``run``) a network is loaded for one model's
     slabs and released, with MLX's free-buffer cache, before the next model loads, so
     one network is resident at a time. With ``retain=True`` (``load_model``) every
     network used stays loaded until :meth:`close`. Prediction holds a process-wide

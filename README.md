@@ -36,9 +36,9 @@ uv pip install "totalsegmentator-mlx>=0.2.0"
 ## Run
 
 ```python
-from totalsegmentator_mlx import segment
+from totalsegmentator_mlx import run
 
-result = segment(image_path="ct.nii.gz", output_dir="out")
+result = run(image_path="ct.nii.gz", output_dir="out")
 print(result["outputs"]["mask"])
 ```
 
@@ -93,7 +93,7 @@ single model folder can be passed directly when only that dataset is needed.
 
 ### Several CTs
 
-`segment` loads each network for its part and releases it before the next one. To
+`run` loads each network for its part and releases it before the next one. To
 segment several CTs, load the model once; its networks stay loaded until it closes:
 
 ```python
@@ -101,10 +101,10 @@ from totalsegmentator_mlx import load_model
 
 with load_model() as model:
     for name in ("ct1", "ct2"):
-        model.segment(image_path=f"{name}.nii.gz", output_dir=name)
+        model.run(image_path=f"{name}.nii.gz", output_dir=name)
 ```
 
-`model.segment` takes the same arguments as `segment` except `weights_path`. Standard
+`model.run` takes the same arguments as `run` except `weights_path`. Standard
 mode with crops keeps up to eight networks loaded.
 
 ### Command line

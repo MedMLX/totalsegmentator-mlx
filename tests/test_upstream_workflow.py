@@ -15,7 +15,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from totalsegmentator_mlx import segment
+from totalsegmentator_mlx import run
 from totalsegmentator_mlx.engine import Networks
 from totalsegmentator_mlx.imageio import load_nifti
 from totalsegmentator_mlx.models import Mode, model_labels
@@ -75,7 +75,7 @@ def test_outer_workflow_matches_independent_reference(
     directory = os.environ.get("MEDMLX_TEST_REFERENCES", str(default))
     fixtures = Path(directory)
     expected = load_nifti(fixtures / f"{reference}_reference.nii.gz")
-    result = segment(
+    result = run(
         image_path=fixtures / f"{source}_ct.nii.gz",
         output_dir=tmp_path,
         weights_path=model_root,

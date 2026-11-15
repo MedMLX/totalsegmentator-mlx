@@ -1,6 +1,6 @@
 """TotalSegmentator v2 ``total`` CT inference on Apple Silicon (MLX), research software.
 
-``segment`` runs a CT through the native workflow and writes uint8 global label IDs
+``run`` runs a CT through the native workflow and writes uint8 global label IDs
 (1-117) on the input grid; ``load_model`` keeps the networks loaded across CTs. Both
 load on first access, so importing the package does not import the MLX engine.
 """
@@ -9,9 +9,9 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from totalsegmentator_mlx.medmlx import load_model, segment
+    from totalsegmentator_mlx.medmlx import load_model, run
 
-__all__ = ["load_model", "segment"]
+__all__ = ["load_model", "run"]
 
 
 def __getattr__(name: str) -> object:

@@ -163,7 +163,7 @@ def check_request(
     force_split: bool = False,
     probabilities: bool = False,
 ) -> Request:
-    """Check every ``segment`` option that needs no model folder, reading only the CT header.
+    """Check every ``run`` option that needs no model folder, reading only the CT header.
 
     Call this before downloading weights so a bad argument fails without network or
     model work. Output paths are checked by the caller.

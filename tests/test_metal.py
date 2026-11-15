@@ -25,7 +25,7 @@ from numpy.typing import NDArray
 
 from totalsegmentator_mlx.imageio import load_nifti, save_nifti
 from totalsegmentator_mlx.labels import LABELS
-from totalsegmentator_mlx.medmlx import load_model, segment
+from totalsegmentator_mlx.medmlx import load_model, run
 from totalsegmentator_mlx.models import Mode, model_labels
 
 if TYPE_CHECKING:
@@ -163,7 +163,7 @@ def test_runner_body_crop_executes_five_parts_without_mirroring_on_metal(
     source = nib.Nifti1Image(image_data, np.diag([1.5, 1.5, 1.5, 1]))
     image = tmp_path / "ct.nii.gz"
     save_nifti(source, image)
-    result = segment(
+    result = run(
         weights_path=str(root), image_path=str(image), output_dir=str(tmp_path), body_seg=True
     )
     paths, artifacts = validate_outputs(result)
@@ -198,7 +198,7 @@ def test_loaded_model_matches_one_shot_segment_across_cts(
     modes: tuple[Mode, ...] = ("fast", "coarse")
     cases: list[tuple[Path, Mode]] = [(image, mode) for image in images for mode in modes]
     expected = [
-        load_nifti(cast(dict[str, str], segment(
+        load_nifti(cast(dict[str, str], run(
             image_path=image, output_dir=tmp_path / f"one-shot{index}", weights_path=root,
             mode=mode,
         )["outputs"])["mask"])
@@ -206,13 +206,13 @@ def test_loaded_model_matches_one_shot_segment_across_cts(
     ]
     with load_model(weights_path=root) as model:
         for index, (image, mode) in enumerate(cases):
-            result = model.segment(image_path=image, output_dir=tmp_path / f"loaded{index}",
+            result = model.run(image_path=image, output_dir=tmp_path / f"loaded{index}",
                                    mode=mode)
             actual = load_nifti(cast(dict[str, str], result["outputs"])["mask"])
             np.testing.assert_array_equal(actual.dataobj, expected[index].dataobj)
             np.testing.assert_array_equal(actual.affine, expected[index].affine)
     with pytest.raises(RuntimeError, match="closed"):
-        model.segment(image_path=images[0], output_dir=tmp_path / "closed")
+        model.run(image_path=images[0], output_dir=tmp_path / "closed")
 
 
 def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
@@ -250,7 +250,7 @@ def test_probability_job_matches_legacy_file_path_without_writing_a_ct(
         save(image, filename)
 
     monkeypatch.setattr(nib.Nifti1Image, "to_filename", mask_only_save)
-    result = segment(image_path=source_file, output_dir=tmp_path / "out", weights_path=root,
+    result = run(image_path=source_file, output_dir=tmp_path / "out", weights_path=root,
                      mode="fast", probabilities=True)
     paths, _ = validate_outputs(result)
     actual = load_nifti(paths["mask"])
