@@ -1,5 +1,6 @@
 """CPU resampling in voxel (x, y, z) order with SciPy nearest boundaries."""
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from importlib import import_module
 from itertools import pairwise
@@ -7,6 +8,8 @@ from typing import Literal, Protocol, cast
 
 import numpy as np
 from numpy.typing import NDArray
+
+_CUBIC_WORKERS = min(16, os.cpu_count() or 1)
 
 
 class SplineFilter(Protocol):
@@ -43,7 +46,7 @@ class CoordinateSampler(Protocol):
 
 
 def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Match SciPy's 3D cubic zoom with at most eight CPU workers.
+    """Match SciPy's 3D cubic zoom with up to sixteen CPU workers.
 
     Filter full independent lines in SciPy's axis order using float64 spline
     coefficients. Output slabs sample global coordinates; splitting the input
@@ -68,7 +71,9 @@ def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDA
     filter_line = cast(SplineFilter, scipy.spline_filter1d)
     sample = cast(CoordinateSampler, scipy.map_coordinates)
     # SciPy nearest-boundary cubic zoom extends every input axis by twelve voxels.
-    padding, workers = 12, 8
+    padding, workers = 12, _CUBIC_WORKERS
+    # Limit concurrent coordinate buffers to the original eight slabs of eight planes.
+    slab_depth = min(8, 64 // workers)
     coefficients = np.pad(values, padding, mode="edge").astype(np.float64, copy=False)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for axis in range(3):
@@ -97,7 +102,7 @@ def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDA
 
         def sample_slab(lower: int) -> None:
             """Sample global cubic coordinates for one output slab."""
-            upper = min(lower + 8, shape[0])
+            upper = min(lower + slab_depth, shape[0])
             coordinates = np.empty((3, upper - lower, shape[1], shape[2]), dtype=np.float64)
             coordinates[0] = (np.arange(lower, upper, dtype=np.float64) * scale[0] + padding)[
                 :, None, None
@@ -113,7 +118,7 @@ def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDA
                 prefilter=False,
             )
 
-        list(pool.map(sample_slab, range(0, shape[0], 8)))
+        list(pool.map(sample_slab, range(0, shape[0], slab_depth)))
     return output
 
 

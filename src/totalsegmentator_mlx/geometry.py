@@ -125,9 +125,10 @@ def resample_ct(image: nib.Nifti1Image, target: float) -> nib.Nifti1Image:
     if np.array_equal(spacing, [target] * 3):
         values = np.asanyarray(image.dataobj).astype(np.int32)
     else:
-        values = cubic_zoom(np.asarray(image.get_fdata(), dtype=np.float64), factors).astype(
-            np.int32
-        )
+        # The spline needs float64 only during resampling. Release it before inference.
+        values = cubic_zoom(
+            np.asarray(image.get_fdata(caching="unchanged"), dtype=np.float64), factors
+        ).astype(np.int32)
     affine = np.array(image.affine, copy=True)
     affine[:3, :3] /= factors
     return nib.Nifti1Image(values, affine)
