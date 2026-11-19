@@ -56,24 +56,28 @@ class Networks:
         """Load the first network on this thread while a worker prepares the model grid.
 
         Hold the runtime lock through inference so a second call cannot stage another
-        network on Metal. One-shot calls release the prepared network after its part.
+        network on Metal. One-shot calls release the prepared network, and MLX's cache, after
+        its part or when loading or preparing fails; the worker is always joined first. If
+        both fail, the load error propagates.
         """
         key = folder.resolve(), task_id
         with _runtime_lock:
             if key not in self._loaded:
-                with ThreadPoolExecutor(max_workers=1) as worker:
-                    pending = worker.submit(prepare)
-                    predictor = load_predictor(*key)
-                    if warmup and not pending.done() and task_id not in _warmed:
-                        _warm_up(predictor, task_id)
-                        _warmed.add(task_id)
-                    prepared = pending.result()
-                    self._loaded[key] = predictor
-                    del predictor
+                predictor: ModelFolderPredictor | None = None
                 try:
+                    with ThreadPoolExecutor(max_workers=1) as worker:
+                        pending = worker.submit(prepare)
+                        predictor = load_predictor(*key)
+                        if warmup and not pending.done() and task_id not in _warmed:
+                            _warm_up(predictor, task_id)
+                            _warmed.add(task_id)
+                        prepared = pending.result()
+                        self._loaded[key] = predictor
                     yield prepared
                 finally:
-                    if not self._retain and key in self._loaded:
+                    # A failed prepare or load still frees the predictor's buffers.
+                    predictor = None
+                    if not self._retain:
                         self._release(key)
                 return
         yield prepare()
