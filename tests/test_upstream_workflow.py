@@ -7,7 +7,6 @@ Fixture provenance documents the source revisions and the controlled labels.
 """
 
 import os
-from collections.abc import Sequence
 from pathlib import Path
 from typing import TypedDict
 
@@ -16,7 +15,6 @@ import numpy as np
 import pytest
 
 from totalsegmentator_mlx import run
-from totalsegmentator_mlx.engine import Networks
 from totalsegmentator_mlx.imageio import load_nifti
 from totalsegmentator_mlx.models import Mode, model_labels
 
@@ -56,21 +54,27 @@ def test_outer_workflow_matches_independent_reference(
 ) -> None:
     """Compare source-grid labels and metadata with upstream workflow fixtures."""
 
-    def predict(
-        networks: Networks,
-        sources: Sequence[nib.Nifti1Image],
-        folder: Path,
-        task_id: int,
-    ) -> list[nib.Nifti1Image]:
+    class ControlledPredictor:
         """Produce deterministic task labels in place of the learned network."""
-        results: list[nib.Nifti1Image] = []
-        for source in sources:
-            values = np.asarray(source.dataobj, dtype=np.int64)
-            labels = ((values + task_id) % (max(model_labels(task_id)) + 1)).astype(np.uint8)
-            results.append(nib.Nifti1Image(labels, source.affine))
-        return results
 
-    monkeypatch.setattr(Networks, "predict_images", predict)
+        def __init__(self, task_id: int) -> None:
+            self.task_id = task_id
+
+        def predict_nifti(self, source: nib.Nifti1Image) -> nib.Nifti1Image:
+            values = np.asarray(source.dataobj, dtype=np.int64)
+            count = max(model_labels(self.task_id)) + 1
+            labels = ((values + self.task_id) % count).astype(np.uint8)
+            return nib.Nifti1Image(labels, source.affine)
+
+    def load_predictor(folder: Path, task_id: int) -> ControlledPredictor:
+        """Use the fixture's controlled network in place of its empty checkpoint."""
+        return ControlledPredictor(task_id)
+
+    def warm_up(predictor: ControlledPredictor, task_id: int) -> None:
+        """The controlled predictor has no Metal pipelines to initialize."""
+
+    monkeypatch.setattr("totalsegmentator_mlx.engine._load_predictor", load_predictor)
+    monkeypatch.setattr("totalsegmentator_mlx.engine._warm_up", warm_up)
     default = Path(__file__).resolve().parents[1] / "work" / "real-reference"
     directory = os.environ.get("MEDMLX_TEST_REFERENCES", str(default))
     fixtures = Path(directory)

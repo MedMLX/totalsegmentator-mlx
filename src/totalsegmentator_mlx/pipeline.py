@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -100,13 +101,34 @@ def _segment_grid(
     """
     _log.info("Preparing CT")
     canonical = canonical_ct(source)
-    prepared = resample_ct(canonical, TASK_SPACING[task_ids[0]])
-    slabs = split_ct(prepared, force_split=force_split, multimodel=len(task_ids) > 1)
-    if probabilities and len(slabs) != 1:
-        raise InvalidInputError("probabilities require an unsplit input")
-    combined, prediction = _infer_parts(
-        slabs, root, task_ids, networks, probabilities=probabilities
+    first_task = task_ids[0]
+    spacing = TASK_SPACING[first_task]
+
+    def prepare() -> tuple[nib.Nifti1Image, tuple[nib.Nifti1Image, ...]]:
+        """Resample and check the model grid before prediction."""
+        prepared = resample_ct(canonical, spacing)
+        slabs = split_ct(prepared, force_split=force_split, multimodel=len(task_ids) > 1)
+        if probabilities and len(slabs) != 1:
+            raise InvalidInputError("probabilities require an unsplit input")
+        return prepared, slabs
+
+    zooms = np.asarray(canonical.header.get_zooms(), dtype=np.float64)
+    # Validate forced splits and undersized grids before loading weights.
+    overlap = (
+        not force_split
+        and np.any(zooms != spacing)
+        and np.all(np.rint(np.asarray(canonical.shape) * (zooms / spacing)) >= 1)
     )
+    if overlap:
+        preparation = networks.prepare_first(
+            model_folder(root, first_task), first_task, prepare, warmup=not probabilities
+        )
+    else:
+        preparation = nullcontext(prepare())
+    with preparation as (prepared, slabs):
+        combined, prediction = _infer_parts(
+            slabs, root, task_ids, networks, probabilities=probabilities
+        )
     labels = join_slabs(combined, prepared.shape)
     if task_ids == (BODY_MODEL,):
         # Upstream cleans body components on the 6 mm grid before restoration.
