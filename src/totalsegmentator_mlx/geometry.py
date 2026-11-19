@@ -190,13 +190,11 @@ def restore_labels(
     """Restore nearest-neighbor labels to the exact source shape, affine and orientation.
 
     ``labels`` is on the resampled grid of ``canonical`` (the ``canonical_ct`` image of
-    ``source``). Labels are scaled up to the canonical shape with nearest-neighbor
-    sampling, then reoriented to match ``source``. Raises ``ModelExecutionError`` if the
-    result does not have the source's shape and affine.
+    ``source``). One nearest-neighbor gather scales labels to the canonical shape
+    and reorients them in NIfTI storage order on the source grid. Raises
+    ``ModelExecutionError`` if the restored shape or affine differs from the source.
     """
     factors = np.asarray(canonical.shape) / np.asarray(labels.shape)
-    restored = nearest_labels(labels, factors)
-    image = nib.Nifti1Image(restored, canonical.affine)
     orientations = import_module("nibabel.orientations")
     orientation = cast(Callable[[object], NDArray[np.float64]], orientations.io_orientation)
     ras = cast(Callable[[str], NDArray[np.float64]], orientations.axcodes2ornt)
@@ -204,12 +202,17 @@ def restore_labels(
         Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
         orientations.ornt_transform,
     )(ras("RAS"), orientation(source.affine))
-    image = image.as_reoriented(cast(Sequence[Sequence[int]], transform))
-    if image.shape != source.shape or not np.allclose(
-        spatial_affine(image), spatial_affine(source), rtol=0, atol=1e-5
+    restored = nearest_labels(labels, factors, transform)
+    inverse = cast(
+        Callable[[NDArray[np.float64], tuple[int, ...]], NDArray[np.float64]],
+        orientations.inv_ornt_aff,
+    )
+    affine = spatial_affine(canonical) @ inverse(transform, canonical.shape)
+    if restored.shape != source.shape or not np.allclose(
+        affine, spatial_affine(source), rtol=0, atol=1e-5
     ):
         raise ModelExecutionError("Restored segmentation geometry differs from its CT input")
-    return source_labels(np.asanyarray(image.dataobj), source)
+    return source_labels(restored, source)
 
 
 def source_labels(labels: Labels, source: nib.Nifti1Image) -> nib.Nifti1Image:

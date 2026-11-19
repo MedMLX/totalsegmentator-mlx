@@ -117,26 +117,42 @@ def cubic_zoom(values: NDArray[np.float64], factors: NDArray[np.float64]) -> NDA
     return output
 
 
-def nearest_labels(labels: NDArray[np.uint8], factors: NDArray[np.float64]) -> NDArray[np.uint8]:
-    """Restore uint8 labels with SciPy's endpoint-aligned nearest coordinates.
+def nearest_labels(
+    labels: NDArray[np.uint8],
+    factors: NDArray[np.float64],
+    transform: NDArray[np.float64] | None = None,
+) -> NDArray[np.uint8]:
+    """Gather uint8 labels on the target grid in Fortran order for NIfTI writing.
 
-    Order zero selects floor(coordinate + 0.5), including half-coordinate ties.
-    Only three index vectors and disjoint uint8 output slabs are allocated.
+    Use SciPy's endpoint-aligned order-zero coordinates, including half-coordinate
+    ties. The optional NiBabel transform maps each resized input axis to an output
+    axis and specifies its direction. Apply both operations in disjoint output slabs.
     """
     shape = tuple(round(size * factor) for size, factor in zip(labels.shape, factors, strict=True))
-    if shape == labels.shape:
-        return labels.copy()
+    if transform is None and shape == labels.shape:
+        return labels.copy(order="F")
     indices: list[NDArray[np.intp]] = []
     for source, target in zip(labels.shape, shape, strict=True):
         scale = (source - 1) / (target - 1) if target != 1 else 1.0
         indices.append(np.floor(np.arange(target, dtype=np.float64) * scale + 0.5).astype(np.intp))
-    output = np.empty(shape, dtype=np.uint8)
+    axes = [0, 1, 2]
+    vectors = list(indices)
+    if transform is not None:
+        for axis, (target, flip) in enumerate(transform):
+            axes[int(target)] = axis
+            vectors[int(target)] = indices[axis][::-1] if flip == -1 else indices[axis]
+    output_shape = tuple(len(vector) for vector in vectors)
+    # A dense C-order ZYX gather gives the XYZ result with contiguous NIfTI planes.
+    reversed_labels = np.ascontiguousarray(labels.transpose(*axes[::-1]))
+    output = np.empty(output_shape[::-1], dtype=np.uint8)
+    rows, columns = np.ix_(vectors[1], vectors[0])
 
     def sample_slab(lower: int) -> None:
         """Copy nearest-neighbor label indices into one output slab."""
-        upper = min(lower + 8, shape[0])
-        output[lower:upper] = labels[np.ix_(indices[0][lower:upper], indices[1], indices[2])]
+        upper = min(lower + 8, output_shape[2])
+        planes = reversed_labels[vectors[2][lower:upper]]
+        output[lower:upper] = planes[:, rows, columns]
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(sample_slab, range(0, shape[0], 8)))
-    return output
+        list(pool.map(sample_slab, range(0, output_shape[2], 8)))
+    return output.T
