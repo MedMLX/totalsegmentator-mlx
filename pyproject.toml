@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "totalsegmentator-mlx"
-version = "0.3.0"
+version = "0.4.0"
 description = "Segment 117 CT structures with TotalSegmentator v2 in native MLX"
 readme = "README.md"
 classifiers = [
