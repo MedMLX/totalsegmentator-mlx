@@ -1,13 +1,12 @@
-"""Typed NIfTI boundaries for NiBabel's partially annotated load/save API."""
+"""Typed NIfTI writing with a parallel gzip stream, and affine access."""
 
 import io
 import os
 import struct
 import zlib
 from collections import deque
-from collections.abc import Buffer, Callable
+from collections.abc import Buffer
 from concurrent.futures import Future, ThreadPoolExecutor
-from importlib import import_module
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -96,24 +95,6 @@ class _ParallelGzip(io.RawIOBase):
         while self._pending:
             self._stream.write(self._pending.popleft().result())
         self._stream.write(struct.pack("<II", self._checksum, self._size & 0xFFFFFFFF))
-
-
-def load_nifti(path: str | Path) -> nib.Nifti1Image:
-    """Load a NIfTI file lazily (voxels stay an array proxy).
-
-    Accepts both NIfTI-1 and NIfTI-2 files: NiBabel's ``Nifti2Image`` subclasses
-    ``Nifti1Image`` and exposes the same affine/header/dataobj interface, and
-    upstream TotalSegmentator's own loader (``nifti_io.require_nifti1``) applies the
-    identical ``isinstance(image, Nifti1Image)`` check, so this matches its behavior.
-
-    Raises ``InvalidInputError`` if NiBabel returns a non-NIfTI image. File and
-    decoding errors from NiBabel propagate.
-    """
-    loader = cast(Callable[[str], object], import_module("nibabel").load)
-    image = loader(str(path))
-    if not isinstance(image, nib.Nifti1Image):
-        raise InvalidInputError("Input must be a NIfTI image")
-    return image
 
 
 def save_nifti(image: nib.Nifti1Image, path: Path) -> None:

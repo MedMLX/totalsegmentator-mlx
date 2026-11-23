@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 import nibabel as nib
 import numpy as np
 from medmlx_core.errors import InvalidInputError
+from medmlx_core.volumes import StoredScalar, Volume, read_volume
 
 from totalsegmentator_mlx.geometry import (
     Labels,
@@ -19,7 +20,6 @@ from totalsegmentator_mlx.geometry import (
     crop_ct,
     join_slabs,
     load_ct,
-    open_ct,
     resample_ct,
     restore_labels,
     source_labels,
@@ -149,7 +149,7 @@ def _same_path(first: Path, second: Path) -> bool:
 class Request:
     """Segmentation arguments checked by ``check_request``; model folders are not checked yet."""
 
-    image: nib.Nifti1Image
+    image: Volume[StoredScalar]
     mode: Mode
     task_ids: tuple[int, ...]
     crop_task: int | None
@@ -185,7 +185,7 @@ def check_request(
     force_split: bool = False,
     probabilities: bool = False,
 ) -> Request:
-    """Check every ``run`` option that needs no model folder, reading only the CT header.
+    """Check every ``run`` option that needs no model folder, reading and admitting the CT.
 
     Call this before downloading weights so a bad argument fails without network or
     model work. Output paths are checked by the caller.
@@ -204,7 +204,7 @@ def check_request(
             raise InvalidInputError(f"{name} must be true or false")
     if not image_path.name.lower().endswith((".nii", ".nii.gz")):
         raise InvalidInputError(f"image_path must be a .nii or .nii.gz file: {image_path}")
-    image = open_ct(image_path)
+    image = read_volume(image_path, role="image_path", dtype=None)
     roi_names = _names("roi_subset", roi_subset)
     roi = None if roi_names is None else select_labels(roi_names)
     if roi is not None and (classes is not None or model_part is not None or body_seg):

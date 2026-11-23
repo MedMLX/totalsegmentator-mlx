@@ -67,7 +67,7 @@ downloads them ahead of time. For local weights, pass the downloaded bundle fold
   structures. `roi_subset` cannot be combined with `classes`, `model_part` or `body_seg`, and
   `robust_crop` requires `roi_subset`. Cropped regions are restored by zero filling; an
   empty localization returns an empty mask.
-- **Units:** spatial units must be millimeters or unspecified.
+- **Units:** spatial units may be millimeters, meters, microns or unspecified.
 - **Mask:** a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input grid,
   with the upstream label table as a header extension.
 - **Probabilities:** float32 local-label probabilities on the model reader's grid, with
@@ -112,12 +112,13 @@ mode with crops keeps up to eight networks loaded.
 ### Command line
 
 ```bash
-totalsegmentator-mlx predict -i ct.nii.gz -o out
+totalsegmentator-mlx predict --image-path ct.nii.gz --output-dir out
 ```
 
-`predict` takes the arguments above as flags (`--weights`, `--mode`, `--classes`,
-`--model-part`, `--roi-subset`, `--robust-crop`, `--body-seg`, `--force-split`,
-`--probabilities`, `--overwrite`) and prints the output paths.
+`predict` takes each argument above as a flag with hyphens (`--image-path`, `--output-dir`,
+`--weights-path`, `--mode`, `--classes`, `--model-part`, `--roi-subset`, `--robust-crop`,
+`--body-seg`, `--force-split`, `--probabilities`, `--overwrite`; each switch also has a
+`--no-` form) and prints the run result as JSON.
 `totalsegmentator-mlx labels` prints the label IDs.
 
 ### Limits

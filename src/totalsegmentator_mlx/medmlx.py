@@ -17,7 +17,7 @@ from medmlx_core.outputs import RunResult as _RunResult
 from medmlx_core.weights import model_folder, weights_revision
 
 from totalsegmentator_mlx.labels import LABELS
-from totalsegmentator_mlx.models import ARITHMETIC, SOURCE_PROFILE, Mode
+from totalsegmentator_mlx.models import PRECISION, SOURCE_PROFILE, Mode
 
 if TYPE_CHECKING:
     from nnunet_mlx import NiftiPrediction
@@ -83,7 +83,8 @@ def run(
 
     Args:
         image_path: Finite 3D NIfTI-1 or NIfTI-2 CT (``.nii`` or ``.nii.gz``) in
-            Hounsfield units, with millimeter or unspecified spatial units.
+            Hounsfield units; meter and micron headers convert to millimeters, and
+            unspecified units count as millimeters.
         output_dir: Folder for the outputs; created if missing.
         weights_path: Root of the native dataset folders as published; omitted weights
             download from MedMLX/totalsegmentator-mlx. Folders ``291``-``295`` serve
@@ -276,7 +277,7 @@ def _segment(
             "backend": "metal",
             "mode": request.mode,
             "source_profile": SOURCE_PROFILE,
-            "precision": ARITHMETIC,
+            "precision": PRECISION,
             "folds": [0],
             "labels": [{"name": name, "value": number} for number, name in LABELS.items()],
         },

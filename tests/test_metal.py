@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 from medmlx_core.outputs import validate_outputs
 from nibabel.filebasedimages import FileBasedImage
+from nifti_io import load_nifti
 from nnunet_mlx.model.network import PlainConvUNet
 from nnunet_mlx.model.topology import PlainConvUNetSpec
 from nnunet_mlx.runtime import import_mlx, runtime_info
@@ -23,7 +24,7 @@ from nnunet_mlx.storage.checkpoint import (
 )
 from numpy.typing import NDArray
 
-from totalsegmentator_mlx.imageio import load_nifti, save_nifti
+from totalsegmentator_mlx.imageio import save_nifti
 from totalsegmentator_mlx.labels import LABELS
 from totalsegmentator_mlx.medmlx import load_model, run
 from totalsegmentator_mlx.models import Mode, model_labels

@@ -7,26 +7,20 @@ the closest RAS+ axes, ``resample_ct`` moves to an isotropic model grid (mm) and
 
 from __future__ import annotations
 
-import zlib
 from collections.abc import Callable, Sequence
 from importlib import import_module
-from pathlib import Path
 from typing import Protocol, cast
 
 import nibabel as nib
 import numpy as np
 from medmlx_core.errors import InvalidInputError, ModelExecutionError
-from nibabel.filebasedimages import ImageFileError
-from nibabel.spatialimages import HeaderDataError
+from medmlx_core.volumes import NiftiHeader, StoredScalar, Volume
 from numpy.typing import NDArray
 
-from totalsegmentator_mlx.imageio import load_nifti, spatial_affine
+from totalsegmentator_mlx.imageio import spatial_affine
 from totalsegmentator_mlx.resampling import cubic_zoom, nearest_labels
 
 type Labels = NDArray[np.uint8]
-
-# NiBabel and gzip failures for unreadable, truncated or non-NIfTI files.
-_READ_ERRORS = (ImageFileError, HeaderDataError, OSError, EOFError, zlib.error)
 
 
 class DtypeSetter(Protocol):
@@ -37,56 +31,19 @@ class DtypeSetter(Protocol):
         ...
 
 
-def open_ct(path: str | Path) -> nib.Nifti1Image:
-    """Open a NIfTI CT lazily, reading only its header.
+def load_ct(volume: Volume[StoredScalar]) -> nib.Nifti1Image:
+    """Wrap an admitted CT volume as a NIfTI image on its millimeter grid.
 
-    Raises:
-        InvalidInputError: The file is missing, unreadable or not a NIfTI image.
+    ``read_volume`` has already checked the file (3D, finite, real, invertible affine,
+    known spatial unit). Voxels keep their stored dtype and are not copied. Intensities are
+    expected in Hounsfield units (not checked). A meter or micron header is rewritten in
+    millimeters to match the converted affine.
     """
-    try:
-        return load_nifti(path)
-    except _READ_ERRORS as error:
-        raise InvalidInputError(f"image_path is not a readable NIfTI image: {error}") from error
-
-
-def load_ct(source: str | Path | nib.Nifti1Image) -> nib.Nifti1Image:
-    """Load a finite, nonempty 3D CT with an invertible affine; voxel spacing is in mm.
-
-    ``source`` is a path or an in-memory NIfTI-1 or NIfTI-2 image. Intensities are expected in
-    Hounsfield units (not checked) and must be integer or float and finite. Spatial units
-    must be millimeters or unspecified. Retain validated proxy values so canonicalization
-    does not decode them again. Array-backed inputs are returned unchanged; caller data
-    and headers are not modified.
-
-    Raises:
-        InvalidInputError: The file cannot be read as NIfTI, or the volume is not 3D, is
-            empty or non-numeric, has non-finite values, has a non-invertible or non-finite
-            affine, or has non-mm spatial units.
-    """
-    image = source if isinstance(source, nib.Nifti1Image) else open_ct(source)
-    try:
-        values = np.asanyarray(image.dataobj)
-    except _READ_ERRORS as error:
-        raise InvalidInputError(f"CT voxel data cannot be read: {error}") from error
-    if values.ndim != 3 or not values.size or values.dtype.kind not in "iuf":
-        raise InvalidInputError("Input must be a nonempty three-dimensional CT")
-    if not np.isfinite(values).all():
-        raise InvalidInputError("CT intensities must be finite")
-    affine = image.affine
-    if (
-        affine is None
-        or not np.isfinite(affine).all()
-        or abs(float(np.linalg.det(affine[:3, :3]))) < 1e-12
-        or not np.allclose(affine[3], [0, 0, 0, 1])
-    ):
-        raise InvalidInputError("CT requires a finite, invertible spatial affine")
-    if image.header.get_xyzt_units()[0] not in {"unknown", "mm"}:
-        raise InvalidInputError("CT spatial units must be millimeters")
-    return (
-        image
-        if cast(object, image.dataobj) is values
-        else nib.Nifti1Image(values, affine, image.header)
-    )
+    image = nib.Nifti1Image(volume.data, volume.affine, cast(nib.Nifti1Header, volume.header))
+    if int(volume.header["xyzt_units"]) & 0x07 in {1, 3}:
+        cast(NiftiHeader, image.header).set_xyzt_units("mm")
+        image.header.set_zooms(volume.zooms)
+    return image
 
 
 def canonical_ct(source: nib.Nifti1Image) -> nib.Nifti1Image:

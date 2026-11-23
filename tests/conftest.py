@@ -6,9 +6,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from nifti_io import load_nifti
 from numpy.typing import NDArray
 
-from totalsegmentator_mlx.imageio import load_nifti
 from totalsegmentator_mlx.models import TASK_SPACING, model_labels
 
 
