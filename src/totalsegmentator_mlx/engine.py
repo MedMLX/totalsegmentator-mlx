@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING
 
 import nibabel as nib
 import numpy as np
@@ -26,12 +26,6 @@ _warmed: set[int] = set()
 
 type NetworkKey = tuple[Path, int]
 type ModelIdentity = tuple[tuple[int, int, int, int, int] | None, ...]
-
-
-class _Memory(Protocol):
-    """MLX's free-buffer cache control."""
-
-    def clear_cache(self) -> None: ...
 
 
 class Networks:
@@ -136,9 +130,10 @@ class Networks:
 
 def _clear_mlx_cache() -> None:
     """Return MLX's free buffers to the system; a no-op before MLX is imported."""
-    module = sys.modules.get("mlx.core")
-    if module is not None:
-        cast(_Memory, module).clear_cache()
+    if "mlx.core" in sys.modules:
+        import mlx.core as mx
+
+        mx.clear_cache()
 
 
 def _model_identity(folder: Path) -> ModelIdentity:
