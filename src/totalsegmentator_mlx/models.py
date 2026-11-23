@@ -21,7 +21,7 @@ from totalsegmentator_mlx.labels import (
 # nnunet-mlx compatibility profile for the released TotalSegmentator v2 CT models, and the
 # arithmetic mode that runs MLX kernels in the pinned PyTorch CPU float32 operation order.
 SOURCE_PROFILE = "totalsegmentator-v2-ct"
-ARITHMETIC = "torch-order-fp32"
+ARITHMETIC = "source-fp32"
 
 type Mode = Literal["standard", "fast", "coarse"]
 MODES: tuple[Mode, ...] = ("standard", "fast", "coarse")
