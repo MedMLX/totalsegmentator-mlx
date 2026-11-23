@@ -11,9 +11,9 @@ Segment 117 CT structures with TotalSegmentator v2 in native MLX. Includes stand
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97_Hugging_Face-weights-yellow)](https://huggingface.co/MedMLX/totalsegmentator-mlx)
 [![MedMLX](https://img.shields.io/badge/MedMLX-runtime-A51C30)](https://github.com/MedMLX/medmlx)
 
-<img src="docs/example.png" alt="TotalSegmentator standard-mode (1.5 mm) 3D surfaces and axial CT segmentation" width="100%">
+<img src="https://raw.githubusercontent.com/MedMLX/totalsegmentator-mlx/main/docs/example.png" alt="TotalSegmentator standard-mode (1.5 mm) 3D surfaces and axial CT segmentation" width="100%">
 
-Standard mode (1.5 mm): 3D surfaces from [autoPET-III](https://huggingface.co/datasets/YongchengYAO/autoPET-III-Lite) and axial CT from [AMOS22](https://zenodo.org/records/7262581). Surfaces and contours are smoothed for display.
+<sub>Standard mode (1.5 mm): 3D surfaces from <a href="https://huggingface.co/datasets/YongchengYAO/autoPET-III-Lite">autoPET-III</a> and axial CT from <a href="https://zenodo.org/records/7262581">AMOS22</a>. Surfaces and contours are smoothed for display.</sub>
 
 </div>
 
@@ -42,7 +42,9 @@ result = run(image_path="ct.nii.gz", output_dir="out")
 print(result["outputs"]["mask"])
 ```
 
-Weights download from `MedMLX/totalsegmentator-mlx` on first use. Use `medmlx setup totalsegmentator` to download ahead of time. For local weights, pass the downloaded bundle folder as `weights_path`.
+Weights download from `MedMLX/totalsegmentator-mlx` on first use; `medmlx setup totalsegmentator`
+downloads them ahead of time. For local weights, pass the downloaded bundle folder as
+`weights_path`.
 
 ### Inputs and outputs
 
@@ -59,13 +61,13 @@ Weights download from `MedMLX/totalsegmentator-mlx` on first use. Use `medmlx se
 | `body_seg` | Crop to the Dataset300 body model plus 3 mm |
 | `force_split` | Use upstream's three overlapping slabs even for smaller volumes |
 | `probabilities` | Also write `probabilities.npz` and `probabilities.pkl` for one uncropped model |
-| `overwrite` | `False` by default; existing outputs are never replaced |
+| `overwrite` | `False` by default; existing outputs are replaced only when `True` |
 
 - **Cropping:** with `roi_subset`, standard mode runs only the parts that contain those
   structures. `roi_subset` cannot be combined with `classes`, `model_part` or `body_seg`, and
   `robust_crop` requires `roi_subset`. Cropped regions are restored by zero filling; an
   empty localization returns an empty mask.
-- **Units:** spatial units must be millimetres or unspecified.
+- **Units:** spatial units must be millimeters or unspecified.
 - **Mask:** a uint8 NIfTI-1 with global labels 1–117 (0 background) on the input grid,
   with the upstream label table as a header extension.
 - **Probabilities:** float32 local-label probabilities on the model reader's grid, with
@@ -125,7 +127,6 @@ totalsegmentator-mlx predict -i ct.nii.gz -o out
 - Models use `3d_fullres`, fold 0, without mirroring.
 - Input and output are NIfTI. Other TotalSegmentator tasks and its extra export,
   statistics and training options are unsupported.
-- Inference requires Apple Silicon with Metal.
 
 ## Use with MedMLX
 
