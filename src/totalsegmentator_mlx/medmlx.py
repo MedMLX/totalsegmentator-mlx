@@ -83,7 +83,8 @@ def run(
 
     Args:
         image_path: Finite 3D NIfTI-1 or NIfTI-2 CT (``.nii`` or ``.nii.gz``) in
-            Hounsfield units, with millimeter or unspecified spatial units.
+            Hounsfield units; meter and micron headers convert to millimeters, and
+            unspecified units count as millimeters.
         output_dir: Folder for the outputs; created if missing.
         weights_path: Root of the native dataset folders as published; omitted weights
             download from MedMLX/totalsegmentator-mlx. Folders ``291``-``295`` serve

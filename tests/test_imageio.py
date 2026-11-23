@@ -7,9 +7,10 @@ from typing import cast
 
 import nibabel as nib
 import numpy as np
+from nifti_io import load_nifti
 from numpy.typing import NDArray
 
-from totalsegmentator_mlx.imageio import ImageWriter, load_nifti, save_nifti
+from totalsegmentator_mlx.imageio import ImageWriter, save_nifti
 
 
 def test_parallel_gzip_matches_serial_nifti(tmp_path: Path, ct_data: NDArray[np.float32]) -> None:

@@ -13,9 +13,9 @@ from typing import TypedDict
 import nibabel as nib
 import numpy as np
 import pytest
+from nifti_io import load_nifti
 
 from totalsegmentator_mlx import run
-from totalsegmentator_mlx.imageio import load_nifti
 from totalsegmentator_mlx.models import Mode, model_labels
 
 
