@@ -17,7 +17,7 @@ from medmlx_core.outputs import RunResult as _RunResult
 from medmlx_core.weights import model_folder, weights_revision
 
 from totalsegmentator_mlx.labels import LABELS
-from totalsegmentator_mlx.models import ARITHMETIC, SOURCE_PROFILE, Mode
+from totalsegmentator_mlx.models import PRECISION, SOURCE_PROFILE, Mode
 
 if TYPE_CHECKING:
     from nnunet_mlx import NiftiPrediction
@@ -276,7 +276,7 @@ def _segment(
             "backend": "metal",
             "mode": request.mode,
             "source_profile": SOURCE_PROFILE,
-            "precision": ARITHMETIC,
+            "precision": PRECISION,
             "folds": [0],
             "labels": [{"name": name, "value": number} for number, name in LABELS.items()],
         },

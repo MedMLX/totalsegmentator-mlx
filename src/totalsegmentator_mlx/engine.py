@@ -16,7 +16,7 @@ import numpy as np
 from medmlx_core.errors import ModelExecutionError
 
 from totalsegmentator_mlx.labels import BODY_MODEL
-from totalsegmentator_mlx.models import ARITHMETIC, SOURCE_PROFILE, TASK_SPACING
+from totalsegmentator_mlx.models import PRECISION, SOURCE_PROFILE, TASK_SPACING
 
 if TYPE_CHECKING:
     from nnunet_mlx import ModelFolderPredictor, NiftiPrediction
@@ -206,7 +206,7 @@ def _load_predictor(folder: Path, task_id: int) -> ModelFolderPredictor:
         configuration="3d_fullres",
         folds=[0],
         source_profile=SOURCE_PROFILE,
-        arithmetic=ARITHMETIC,
+        precision=PRECISION,
     )
     if bundle.image_channels != 1 or bundle.input_channels != 1:
         raise ModelExecutionError("CT models require exactly one CT input channel")
